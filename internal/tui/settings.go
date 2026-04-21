@@ -106,6 +106,9 @@ func (s *Settings) View() string {
 		label := StyleMuted.Render(s.labels[i])
 		rows = append(rows, label, ti.View(), "")
 	}
-	rows = append(rows, HelpLine("tab cycle", "ctrl+s save", "esc back"))
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+func (s *Settings) HelpKeys() []string {
+	return []string{"tab cycle", "ctrl+s save", "esc back"}
 }

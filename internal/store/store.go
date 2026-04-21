@@ -135,7 +135,7 @@ func scanCard(scanner interface {
 	var ts string
 	err := scanner.Scan(
 		&c.ID, &c.DeckID, &c.Type, &c.Language,
-		&c.Prompt, &c.ExpectedAnswer, &blanks, &choices, &ts,
+		&c.Prompt, &c.InitialCode, &c.ExpectedAnswer, &blanks, &choices, &ts,
 	)
 	if err != nil {
 		return c, err
@@ -156,7 +156,7 @@ func scanCard(scanner interface {
 	return c, nil
 }
 
-const cardCols = "id,deck_id,type,language,prompt,expected_answer,blanks_data,choices,created_at"
+const cardCols = "id,deck_id,type,language,prompt,initial_code,expected_answer,blanks_data,choices,created_at"
 
 func (s *Store) ListCards(deckID int64) ([]models.Card, error) {
 	rows, err := s.db.Query(
@@ -216,6 +216,7 @@ type CardInput struct {
 	Type           models.CardType
 	Language       string
 	Prompt         string
+	InitialCode    string
 	ExpectedAnswer string
 	BlanksData     *models.BlankData
 	Choices        []models.Choice
@@ -240,9 +241,9 @@ func (s *Store) BulkCreateCards(deckID int64, inputs []CardInput) ([]models.Card
 			choicesJSON = string(b)
 		}
 		res, err := tx.Exec(
-			`INSERT INTO cards(deck_id,type,language,prompt,expected_answer,blanks_data,choices)
-             VALUES(?,?,?,?,?,?,?)`,
-			deckID, string(in.Type), in.Language, in.Prompt, in.ExpectedAnswer, blanksJSON, choicesJSON,
+			`INSERT INTO cards(deck_id,type,language,prompt,initial_code,expected_answer,blanks_data,choices)
+             VALUES(?,?,?,?,?,?,?,?)`,
+			deckID, string(in.Type), in.Language, in.Prompt, in.InitialCode, in.ExpectedAnswer, blanksJSON, choicesJSON,
 		)
 		if err != nil {
 			return nil, err
@@ -288,8 +289,8 @@ func (s *Store) UpdateCard(id int64, in CardInput) (*models.Card, error) {
 		choicesJSON = string(b)
 	}
 	_, err := s.db.Exec(
-		`UPDATE cards SET type=?, language=?, prompt=?, expected_answer=?, blanks_data=?, choices=? WHERE id=?`,
-		string(in.Type), in.Language, in.Prompt, in.ExpectedAnswer, blanksJSON, choicesJSON, id,
+		`UPDATE cards SET type=?, language=?, prompt=?, initial_code=?, expected_answer=?, blanks_data=?, choices=? WHERE id=?`,
+		string(in.Type), in.Language, in.Prompt, in.InitialCode, in.ExpectedAnswer, blanksJSON, choicesJSON, id,
 	)
 	if err != nil {
 		return nil, err

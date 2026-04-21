@@ -14,20 +14,24 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lforato/vimtea"
 
 	"github.com/lforato/gocards/internal/ai"
-	"github.com/lforato/gocards/internal/editor"
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/srs"
 	"github.com/lforato/gocards/internal/store"
 )
 
+// codeSubmitMsg is emitted by the inline vimtea editor's ctrl+s binding and
+// carries the user's final answer so the Study screen can start grading.
+type codeSubmitMsg struct{ content string }
+
 type studyStage int
 
 const (
 	stageQuestion studyStage = iota
-	stageAnswered  // user submitted answer; MCQ/fill shows instant result, code/exp shows graded view
-	stageGrading   // streaming the grader
+	stageAnswered            // user submitted answer; MCQ/fill shows instant result, code/exp shows graded view
+	stageGrading             // streaming the grader
 	stageDone
 )
 
@@ -42,25 +46,31 @@ type Study struct {
 	stage studyStage
 
 	// answering state
-	mcqCursor int
-	fillInputs []textinput.Model
-	fillFocus  int
-	codeAnswer string
+	mcqCursor         int
+	fillInputs        []textinput.Model
+	fillFocus         int
+	codeAnswer        string
 	explanationAnswer string
 
 	// grading state (code/exp cards)
-	ctx      context.Context
-	cancel   context.CancelFunc
-	streamCh <-chan ai.Event
-	spin     spinner.Model
-	vp       viewport.Model
-	grader   string
-	graderErr error
+	ctx         context.Context
+	cancel      context.CancelFunc
+	streamCh    <-chan ai.Event
+	spin        spinner.Model
+	vp          viewport.Model
+	grader      string
+	graderErr   error
 	graderGrade int
 
 	// result for mcq/fill
 	resultGrade int
 	resultNote  string
+
+	// screen dimensions (from WindowSizeMsg) used to size the inline editor
+	w, h int
+
+	// inline vim editor used for CardCode / CardExp question stage
+	codeEditor vimtea.Editor
 }
 
 func NewStudy(s *store.Store, d models.Deck) *Study {
@@ -100,13 +110,13 @@ func (s *Study) current() *models.Card {
 	return &s.cards[s.idx]
 }
 
-func (s *Study) resetPerCardState() {
+func (s *Study) resetPerCardState() tea.Cmd {
 	card := s.current()
 	if card == nil {
-		return
+		return nil
 	}
 	s.mcqCursor = 0
-	s.codeAnswer = ""
+	s.codeAnswer = card.InitialCode
 	s.explanationAnswer = ""
 	s.grader = ""
 	s.graderErr = nil
@@ -114,6 +124,7 @@ func (s *Study) resetPerCardState() {
 	s.resultGrade = 0
 	s.resultNote = ""
 	s.stage = stageQuestion
+	s.codeEditor = nil
 
 	// prep fill inputs
 	if card.Type == models.CardFill && card.BlanksData != nil {
@@ -136,10 +147,89 @@ func (s *Study) resetPerCardState() {
 	if card.Type == models.CardExp {
 		s.explanationAnswer = extractCodeBlock(card.Prompt)
 	}
+
+	if card.Type == models.CardCode || card.Type == models.CardExp {
+		initial := card.InitialCode
+		if card.Type == models.CardExp {
+			initial = s.explanationAnswer
+		}
+		ed := vimtea.NewEditor(
+			vimtea.WithContent(initial),
+			vimtea.WithFileName("code"+langExt(card.Language)),
+			vimtea.WithEnableStatusBar(false),
+		)
+		ed.AddBinding(vimtea.KeyBinding{
+			Key:  "ctrl+s",
+			Mode: vimtea.ModeNormal,
+			Handler: func(b vimtea.Buffer) tea.Cmd {
+				content := b.Text()
+				return func() tea.Msg { return codeSubmitMsg{content: content} }
+			},
+		})
+		ed.SetSize(s.editorWidth(), s.editorHeight())
+		s.codeEditor = ed
+		return ed.Init()
+	}
+	return nil
+}
+
+// Study layout — prompt stacked on top, vim editor below, both full width:
+//
+//	<header>                                   (1 row)
+//	<blank>                                    (1 row)
+//	prompt text (full width, wraps)            promptH rows
+//	<blank>                                    (1 row)
+//	your answer:                               (1 row)
+//	<vim editor, fills the rest>               editorH rows
+//	<blank>                                    (1 row)
+//	<help>                                     (1 row)
+//	<blank>                                    (1 row)
+//
+// The editor height depends on how many rows the prompt occupies at the
+// current screen width, so View computes it from lipgloss.Height(prompt).
+
+const (
+	// studyChromeRows covers the rows that study.View adds around the per-card
+	// body: deck header (1) + blank (1). The global help is now rendered by
+	// app.go, so no rows are reserved for it here.
+	studyChromeRows   = 2
+	studyRightLabel   = 1 // "your answer:" line above the editor
+	studyPromptChrome = 2 // blank line + label between prompt and editor
+)
+
+func (s *Study) bodyHeight() int {
+	h := s.h
+	if h <= 0 {
+		h = 20
+	}
+	return max(8, h-studyChromeRows)
+}
+
+func (s *Study) editorWidth() int {
+	w := s.w
+	if w <= 0 {
+		w = 80
+	}
+	return max(20, w)
+}
+
+// editorHeight returns a fallback size used when the editor is created before
+// the prompt has been rendered (View computes the exact value and calls
+// SetSize with it every frame).
+func (s *Study) editorHeight() int {
+	return max(5, s.bodyHeight()-studyRightLabel-studyPromptChrome-2)
 }
 
 func (s *Study) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch m := msg.(type) {
+	case tea.WindowSizeMsg:
+		s.w = m.Width
+		s.h = m.Height
+		if s.codeEditor != nil {
+			s.codeEditor.SetSize(s.editorWidth(), s.editorHeight())
+		}
+		return s, nil
+
 	case studyLoadedMsg:
 		if m.err != nil {
 			return s, ToastErr("study load: " + m.err.Error())
@@ -150,8 +240,7 @@ func (s *Study) Update(msg tea.Msg) (Screen, tea.Cmd) {
 			s.stage = stageDone
 			return s, nil
 		}
-		s.resetPerCardState()
-		return s, nil
+		return s, s.resetPerCardState()
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -178,22 +267,18 @@ func (s *Study) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		s.stage = stageAnswered
 		return s, nil
 
-	case editor.OpenResult:
-		// edit buffer returned for code/exp card answers
+	case codeSubmitMsg:
 		if s.stage != stageQuestion {
 			return s, nil
-		}
-		if m.Err != nil {
-			return s, ToastErr("editor: " + m.Err.Error())
 		}
 		card := s.current()
 		if card == nil {
 			return s, nil
 		}
 		if card.Type == models.CardCode {
-			s.codeAnswer = m.Content
+			s.codeAnswer = m.content
 		} else if card.Type == models.CardExp {
-			s.explanationAnswer = m.Content
+			s.explanationAnswer = m.content
 		}
 		return s, s.startGrading()
 
@@ -203,6 +288,11 @@ func (s *Study) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 	if s.stage == stageQuestion {
 		card := s.current()
+		if card != nil && s.codeEditor != nil &&
+			(card.Type == models.CardCode || card.Type == models.CardExp) {
+			_, cmd := s.codeEditor.Update(msg)
+			return s, cmd
+		}
 		if card != nil && card.Type == models.CardFill && s.fillFocus < len(s.fillInputs) {
 			var cmd tea.Cmd
 			s.fillInputs[s.fillFocus], cmd = s.fillInputs[s.fillFocus].Update(msg)
@@ -213,6 +303,22 @@ func (s *Study) Update(msg tea.Msg) (Screen, tea.Cmd) {
 }
 
 func (s *Study) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
+	// Code/exp cards in the question stage route keys to the inline vim editor.
+	// Esc in normal mode is the only study-level escape hatch; all other keys
+	// (including esc while in insert/visual) go to vimtea.
+	card := s.current()
+	if s.stage == stageQuestion && card != nil && s.codeEditor != nil &&
+		(card.Type == models.CardCode || card.Type == models.CardExp) {
+		if m.String() == "esc" && s.codeEditor.GetMode() == vimtea.ModeNormal {
+			if s.cancel != nil {
+				s.cancel()
+			}
+			return s, s.endAndPop()
+		}
+		_, cmd := s.codeEditor.Update(m)
+		return s, cmd
+	}
+
 	switch m.String() {
 	case "esc":
 		if s.cancel != nil {
@@ -229,7 +335,6 @@ func (s *Study) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 		return s, nil
 	}
 
-	card := s.current()
 	if card == nil {
 		return s, nil
 	}
@@ -337,26 +442,9 @@ func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (Screen, tea.
 			return s, cmd
 		}
 
-	case models.CardCode:
-		if m.String() == "enter" || m.String() == "e" {
-			return s, editor.Open(s.codeAnswer, card.Language, func(r editor.OpenResult) tea.Msg { return r })
-		}
-		if m.String() == "s" {
-			// skip — record as grade 1
-			s.resultGrade = 1
-			s.stage = stageAnswered
-			return s, s.recordReview(1)
-		}
-
-	case models.CardExp:
-		if m.String() == "enter" || m.String() == "e" {
-			return s, editor.Open(s.explanationAnswer, card.Language, func(r editor.OpenResult) tea.Msg { return r })
-		}
-		if m.String() == "s" {
-			s.resultGrade = 1
-			s.stage = stageAnswered
-			return s, s.recordReview(1)
-		}
+	case models.CardCode, models.CardExp:
+		// Keys for code/exp in the question stage are consumed by the inline
+		// vim editor in handleKey before reaching here.
 	}
 	return s, nil
 }
@@ -432,8 +520,7 @@ func (s *Study) advance() tea.Cmd {
 		}
 		return nil
 	}
-	s.resetPerCardState()
-	return nil
+	return s.resetPerCardState()
 }
 
 func (s *Study) endAndPop() tea.Cmd {
@@ -504,12 +591,8 @@ func (s *Study) viewMCQ(card *models.Card) string {
 		}
 		rows = append(rows, prefix+label)
 	}
-	rows = append(rows, "")
 	if s.stage == stageAnswered {
-		rows = append(rows, StylePrimary.Render(fmt.Sprintf("→ %s  (grade %d)", s.resultNote, s.resultGrade)))
-		rows = append(rows, HelpLine("enter next", "esc end"))
-	} else {
-		rows = append(rows, HelpLine("↑/↓ pick", "enter submit", "esc end"))
+		rows = append(rows, "", StylePrimary.Render(fmt.Sprintf("→ %s  (grade %d)", s.resultNote, s.resultGrade)))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
@@ -554,51 +637,69 @@ func (s *Study) viewFill(card *models.Card) string {
 		if card.BlanksData != nil {
 			rows = append(rows, StyleMuted.Render("answers: "+strings.Join(card.BlanksData.Blanks, ", ")))
 		}
-		rows = append(rows, HelpLine("enter next", "esc end"))
-	} else {
-		rows = append(rows, HelpLine("tab switch", "enter submit", "esc end"))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func (s *Study) viewCode(card *models.Card) string {
+	if s.stage == stageQuestion {
+		return s.viewCodeQuestion(card, "your answer")
+	}
 	rows := []string{renderPrompt(card.Prompt), ""}
 	if s.codeAnswer != "" {
 		rows = append(rows, StyleMuted.Render("your answer:"), codeBox(s.codeAnswer), "")
 	}
-	switch s.stage {
-	case stageQuestion:
-		rows = append(rows, HelpLine("e / enter open vim", "s skip (grade 1)", "esc end"))
-	case stageGrading:
-		rows = append(rows, s.spin.View()+" grading…", "",
-			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
-				BorderForeground(ColorBorder).Padding(0, 1).Render(s.vp.View()),
-			"", HelpLine("ctrl+x cancel"))
-	case stageAnswered:
-		if s.graderErr != nil {
-			rows = append(rows, StyleDanger.Render(s.graderErr.Error()))
-		}
-		rows = append(rows, StyleMuted.Render("grader:"))
-		rows = append(rows, renderPrompt(s.grader))
-		rows = append(rows, "", StylePrimary.Render(fmt.Sprintf("grade: %d", s.graderGrade)))
-		rows = append(rows, HelpLine("1-5 override", "enter next", "esc end"))
-	}
+	rows = append(rows, s.viewGrading()...)
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func (s *Study) viewExp(card *models.Card) string {
+	if s.stage == stageQuestion {
+		return s.viewCodeQuestion(card, "annotated source")
+	}
 	rows := []string{renderPrompt(card.Prompt), ""}
 	if s.explanationAnswer != "" {
 		rows = append(rows, StyleMuted.Render("annotated source:"), codeBox(s.explanationAnswer), "")
 	}
+	rows = append(rows, s.viewGrading()...)
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+// viewCodeQuestion renders the question-stage layout for CardCode and CardExp:
+// prompt on top, full-width vim editor below, help line at the bottom.
+func (s *Study) viewCodeQuestion(card *models.Card, editorLabel string) string {
+	totalW := s.editorWidth()
+	bodyH := s.bodyHeight()
+
+	prompt := lipgloss.NewStyle().Width(totalW).Render(renderPrompt(card.Prompt))
+	promptH := lipgloss.Height(prompt)
+
+	editorH := max(5, bodyH-promptH-studyPromptChrome-studyRightLabel)
+	var editorView string
+	if s.codeEditor != nil {
+		s.codeEditor.SetSize(totalW, editorH)
+		editorView = s.codeEditor.View()
+	}
+
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		prompt,
+		"",
+		StyleMuted.Render(editorLabel+":"),
+		editorView,
+	)
+
+	return body
+}
+
+// viewGrading returns the rows shown below a code/exp prompt while the grader
+// streams, and after the grader finishes. Shared between CardCode and CardExp.
+func (s *Study) viewGrading() []string {
+	var rows []string
 	switch s.stage {
-	case stageQuestion:
-		rows = append(rows, HelpLine("e / enter annotate in vim", "s skip", "esc end"))
 	case stageGrading:
 		rows = append(rows, s.spin.View()+" grading…", "",
 			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
-				BorderForeground(ColorBorder).Padding(0, 1).Render(s.vp.View()),
-			"", HelpLine("ctrl+x cancel"))
+				BorderForeground(ColorBorder).Padding(0, 1).Render(s.vp.View()))
 	case stageAnswered:
 		if s.graderErr != nil {
 			rows = append(rows, StyleDanger.Render(s.graderErr.Error()))
@@ -606,19 +707,45 @@ func (s *Study) viewExp(card *models.Card) string {
 		rows = append(rows, StyleMuted.Render("grader:"))
 		rows = append(rows, renderPrompt(s.grader))
 		rows = append(rows, "", StylePrimary.Render(fmt.Sprintf("grade: %d", s.graderGrade)))
-		rows = append(rows, HelpLine("1-5 override", "enter next", "esc end"))
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	return rows
 }
 
 func (s *Study) viewDone() string {
-	msg := StylePrimary.Render("🎉 session complete")
 	if len(s.cards) == 0 {
-		msg = StyleMuted.Render("nothing due — check back later")
+		return StyleMuted.Render("nothing due — check back later")
 	}
-	return lipgloss.JoinVertical(lipgloss.Left,
-		msg, "", HelpLine("enter back"),
-	)
+	return StylePrimary.Render("🎉 session complete")
+}
+
+func (s *Study) HelpKeys() []string {
+	if s.stage == stageDone || len(s.cards) == 0 {
+		return []string{"enter back"}
+	}
+	card := s.current()
+	if card == nil {
+		return []string{"esc end"}
+	}
+	switch s.stage {
+	case stageQuestion:
+		switch card.Type {
+		case models.CardMCQ:
+			return []string{"↑/↓ pick", "enter submit", "esc end"}
+		case models.CardFill:
+			return []string{"tab switch", "enter submit", "esc end"}
+		case models.CardCode, models.CardExp:
+			return []string{"i insert", "esc normal", "ctrl+s submit", "esc end (from normal)"}
+		}
+	case stageGrading:
+		return []string{"ctrl+x cancel"}
+	case stageAnswered:
+		switch card.Type {
+		case models.CardCode, models.CardExp:
+			return []string{"1-5 override", "enter next", "esc end"}
+		}
+		return []string{"enter next", "esc end"}
+	}
+	return []string{"esc end"}
 }
 
 // --- helpers ---

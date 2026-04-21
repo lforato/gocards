@@ -263,7 +263,7 @@ func (c *Create) viewPickDeck() string {
 	if sel {
 		label = StyleSelected.Render(label)
 	}
-	rows = append(rows, prefix+label, "", HelpLine("↑/↓ move", "enter select", "esc back"))
+	rows = append(rows, prefix+label)
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
@@ -272,8 +272,7 @@ func (c *Create) viewNewDeck() string {
 		StyleTitle.Render("Create deck"), "",
 		StyleMuted.Render("Name"), c.newName.View(), "",
 		StyleMuted.Render("Description"), c.newDesc.View(), "",
-		StyleMuted.Render("Color (#hex)"), c.newColor.View(), "",
-		HelpLine("tab cycle", "enter create", "esc back"),
+		StyleMuted.Render("Color (#hex)"), c.newColor.View(),
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
@@ -293,8 +292,16 @@ func (c *Create) viewPickType() string {
 		badge := typeBadge(t, sel)
 		rows = append(rows, prefix+badge+"  "+StyleMuted.Render(typeDescription(t)))
 	}
-	rows = append(rows, "", HelpLine("↑/↓ move", "enter select", "esc back"))
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+func (c *Create) HelpKeys() []string {
+	switch c.step {
+	case stepNewDeck:
+		return []string{"tab cycle", "enter create", "esc back"}
+	default:
+		return []string{"↑/↓ move", "enter select", "esc back"}
+	}
 }
 
 func typeDescription(t models.CardType) string {

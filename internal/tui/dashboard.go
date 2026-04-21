@@ -205,18 +205,17 @@ func (d *Dashboard) View() string {
 		rows = append(rows, line)
 	}
 
-	// Match the heatmap's rendered outer width (Width + border = d.w - 6 + 2).
-	help := HelpLineSpread(heatOuterW+2, "↑/↓ select", "enter open", "S study", "n new", "s settings", "r reload", "q quit")
-
 	return lipgloss.JoinVertical(lipgloss.Left,
 		stats,
 		"",
 		heat,
 		"",
 		lipgloss.JoinVertical(lipgloss.Left, rows...),
-		"",
-		help,
 	)
+}
+
+func (d *Dashboard) HelpKeys() []string {
+	return []string{"↑/↓ select", "enter open", "S study", "n new", "s settings", "r reload", "q quit"}
 }
 
 func statBox(label, value string, w int) string {

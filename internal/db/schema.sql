@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS cards (
     type            TEXT NOT NULL,
     language        TEXT NOT NULL,
     prompt          TEXT NOT NULL,
+    initial_code    TEXT NOT NULL DEFAULT '',
     expected_answer TEXT NOT NULL DEFAULT '',
     blanks_data     TEXT,
     choices         TEXT,

@@ -19,6 +19,7 @@ const (
 	fType editField = iota
 	fLanguage
 	fPrompt
+	fInitialCode
 	fExpected
 	fChoices
 	fTemplate
@@ -33,7 +34,7 @@ type Edit struct {
 
 	language textinput.Model
 
-	// inline code editor modal
+	// inline code editor modal (used for prompt/initial code/expected/template)
 	editor       CodeEditor
 	editorActive bool
 	editingField editField
@@ -43,6 +44,9 @@ type Edit struct {
 	choiceEditing bool
 	choiceInput   textinput.Model
 	choiceEditIdx int
+
+	// screen dimensions (from WindowSizeMsg) used to size the inline editor
+	w, h int
 }
 
 func NewEdit(s *store.Store, card models.Card) *Edit {
@@ -83,6 +87,8 @@ func (e *Edit) visibleFields() []editField {
 		return []editField{fType, fLanguage, fPrompt, fChoices}
 	case models.CardFill:
 		return []editField{fType, fLanguage, fPrompt, fTemplate}
+	case models.CardCode:
+		return []editField{fLanguage, fPrompt, fInitialCode, fExpected}
 	default:
 		return []editField{fType, fLanguage, fPrompt, fExpected}
 	}
@@ -103,23 +109,33 @@ func (e *Edit) cycleFocus(delta int) {
 }
 
 func (e *Edit) updateFocus() {
+	e.language.Blur()
 	if e.focus == fLanguage {
 		e.language.Focus()
-	} else {
-		e.language.Blur()
 	}
 }
 
 func (e *Edit) Update(msg tea.Msg) (Screen, tea.Cmd) {
+	if sz, ok := msg.(tea.WindowSizeMsg); ok {
+		e.w = sz.Width
+		e.h = sz.Height
+		if e.editorActive {
+			e.editor = e.editor.SetSize(e.editorWidth(), e.editorHeight())
+		}
+		return e, nil
+	}
+
+	if e.editorActive {
+		var cmd tea.Cmd
+		e.editor, cmd = e.editor.Update(msg)
+		if e.editor.Done() {
+			e.commitEditor()
+		}
+		return e, cmd
+	}
+
 	switch m := msg.(type) {
 	case tea.KeyMsg:
-		if e.editorActive {
-			e.editor = e.editor.Update(m)
-			if e.editor.Done() {
-				e.commitEditor()
-			}
-			return e, nil
-		}
 		if e.choiceEditing {
 			return e.updateChoiceEdit(m)
 		}
@@ -145,6 +161,8 @@ func (e *Edit) commitEditor() {
 	switch e.editingField {
 	case fPrompt:
 		e.card.Prompt = val
+	case fInitialCode:
+		e.card.InitialCode = val
 	case fExpected:
 		e.card.ExpectedAnswer = val
 	case fTemplate:
@@ -156,10 +174,29 @@ func (e *Edit) commitEditor() {
 	e.editorActive = false
 }
 
-func (e *Edit) openEditor(field editField, content, lang, title string) {
+func (e *Edit) openEditor(field editField, content, lang, title string) tea.Cmd {
 	e.editingField = field
-	e.editor = NewCodeEditor(title, content, lang, 90, 20)
+	e.editor = NewCodeEditor(title, content, lang, e.editorWidth(), e.editorHeight())
 	e.editorActive = true
+	return e.editor.Init()
+}
+
+// editorWidth / editorHeight return the dimensions passed into
+// NewCodeEditor / SetSize. CodeEditor's outer rendered size is (width+2) ×
+// height because Border adds 1 cell on each horizontal side, so we subtract
+// 2 from the available screen width to keep the box from overflowing.
+func (e *Edit) editorWidth() int {
+	if e.w <= 0 {
+		return 80
+	}
+	return max(20, e.w-2)
+}
+
+func (e *Edit) editorHeight() int {
+	if e.h <= 0 {
+		return 20
+	}
+	return max(6, e.h)
 }
 
 func (e *Edit) updateKey(m tea.KeyMsg) (Screen, tea.Cmd) {
@@ -185,18 +222,17 @@ func (e *Edit) updateKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 	case "enter":
 		switch e.focus {
 		case fPrompt:
-			e.openEditor(fPrompt, e.card.Prompt, "markdown", "Prompt")
-			return e, nil
+			return e, e.openEditor(fPrompt, e.card.Prompt, "markdown", "Question")
+		case fInitialCode:
+			return e, e.openEditor(fInitialCode, e.card.InitialCode, e.card.Language, "Initial code")
 		case fExpected:
-			e.openEditor(fExpected, e.card.ExpectedAnswer, e.card.Language, "Expected answer")
-			return e, nil
+			return e, e.openEditor(fExpected, e.card.ExpectedAnswer, e.card.Language, "Expected answer")
 		case fTemplate:
 			content := ""
 			if e.card.BlanksData != nil {
 				content = e.card.BlanksData.Template
 			}
-			e.openEditor(fTemplate, content, e.card.Language, "Template")
-			return e, nil
+			return e, e.openEditor(fTemplate, content, e.card.Language, "Template")
 		}
 	}
 
@@ -318,12 +354,13 @@ func (e *Edit) updateChoiceEdit(m tea.KeyMsg) (Screen, tea.Cmd) {
 
 func (e *Edit) save() tea.Cmd {
 	in := store.CardInput{
-		Type:     e.card.Type,
-		Language: strings.TrimSpace(e.card.Language),
-		Prompt:   e.card.Prompt,
+		Type:        e.card.Type,
+		Language:    strings.TrimSpace(e.card.Language),
+		Prompt:      e.card.Prompt,
+		InitialCode: e.card.InitialCode,
 	}
-	if in.Prompt == "" {
-		return ToastErr("prompt required")
+	if strings.TrimSpace(in.Prompt) == "" {
+		return ToastErr("question required")
 	}
 
 	switch e.card.Type {
@@ -412,21 +449,45 @@ func (e *Edit) View() string {
 		StyleMuted.Render("(1 code · 2 mcq · 3 fill · 4 exp)"),
 	)
 
-	rows := []string{
-		StyleTitle.Render(title), "",
-		label("Type", e.focus == fType),
-		"  " + typeLine,
-		"",
-		label("Language", e.focus == fLanguage),
-		"  " + e.language.View(),
-		"",
-		label("Prompt", e.focus == fPrompt),
-		previewBox(e.card.Prompt, "(empty — press enter to open vim)"),
-		"",
+	var rows []string
+	rows = append(rows, StyleTitle.Render(title), "")
+
+	if e.card.Type == models.CardCode {
+		// Type is a muted header (not a focusable field) for code cards.
+		rows = append(rows,
+			StyleMuted.Render("Type"),
+			"  "+typeLine,
+			"",
+			label("Language", e.focus == fLanguage),
+			"  "+e.language.View(),
+			"",
+			label("Question", e.focus == fPrompt),
+			previewBox(e.card.Prompt, "(empty — press enter to edit)"),
+			"",
+			label("Initial code", e.focus == fInitialCode),
+			previewBox(e.card.InitialCode, "(empty — press enter to edit)"),
+			"",
+			label("Expected answer", e.focus == fExpected),
+			previewBox(e.card.ExpectedAnswer, "(empty — press enter to edit)"),
+			"",
+		)
+		return lipgloss.JoinVertical(lipgloss.Left, rows...)
 	}
 
+	rows = append(rows,
+		label("Type", e.focus == fType),
+		"  "+typeLine,
+		"",
+		label("Language", e.focus == fLanguage),
+		"  "+e.language.View(),
+		"",
+		label("Question", e.focus == fPrompt),
+		previewBox(e.card.Prompt, "(empty — press enter to open vim)"),
+		"",
+	)
+
 	switch e.card.Type {
-	case models.CardCode, models.CardExp:
+	case models.CardExp:
 		rows = append(rows,
 			label("Expected answer", e.focus == fExpected),
 			previewBox(e.card.ExpectedAnswer, "(empty — press enter to open vim)"),
@@ -451,18 +512,23 @@ func (e *Edit) View() string {
 		)
 	}
 
-	rows = append(rows, e.helpLine())
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
-func (e *Edit) helpLine() string {
+func (e *Edit) HelpKeys() []string {
+	if e.editorActive {
+		return []string{"vim keys", "esc save & back"}
+	}
 	if e.choiceEditing {
-		return HelpLine("type text", "enter commit", "esc cancel")
+		return []string{"type text", "enter commit", "esc cancel"}
 	}
 	if e.focus == fChoices {
-		return HelpLine("↑/↓ move", "space correct", "a add", "e edit", "d delete", "tab next field", "ctrl+s save", "esc back")
+		return []string{"↑/↓ move", "space correct", "a add", "e edit", "d delete", "tab next field", "ctrl+s save", "esc back"}
 	}
-	return HelpLine("tab cycle", "enter edit field", "1-4 type", "ctrl+s save", "esc back")
+	if e.card.Type == models.CardCode {
+		return []string{"tab cycle", "enter open editor", "ctrl+s save", "esc back"}
+	}
+	return []string{"tab cycle", "enter edit field", "1-4 type", "ctrl+s save", "esc back"}
 }
 
 func (e *Edit) viewChoices() string {

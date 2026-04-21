@@ -188,24 +188,27 @@ func (d *DeckView) View() string {
 		rows = append(rows, line)
 	}
 
-	var footer string
 	if d.confirmDelete && d.cursor < len(d.cards) {
-		footer = StyleDanger.Render(
-			fmt.Sprintf("delete card %d? y/N", d.cards[d.cursor].ID),
-		)
-	} else {
-		footer = HelpLine(
-			"↑/↓ move", "enter edit", "s study", "n new", "d delete", "r reload", "esc back",
+		return lipgloss.JoinVertical(lipgloss.Left,
+			header,
+			"",
+			lipgloss.JoinVertical(lipgloss.Left, rows...),
+			"",
+			StyleDanger.Render(fmt.Sprintf("delete card %d? y/N", d.cards[d.cursor].ID)),
 		)
 	}
-
 	return lipgloss.JoinVertical(lipgloss.Left,
 		header,
 		"",
 		lipgloss.JoinVertical(lipgloss.Left, rows...),
-		"",
-		footer,
 	)
+}
+
+func (d *DeckView) HelpKeys() []string {
+	if d.confirmDelete && d.cursor < len(d.cards) {
+		return []string{"y delete", "N cancel"}
+	}
+	return []string{"↑/↓ move", "enter edit", "s study", "n new", "d delete", "r reload", "esc back"}
 }
 
 func flat(s string) string {

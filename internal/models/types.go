@@ -36,6 +36,7 @@ type Card struct {
 	Type           CardType   `json:"type"`
 	Language       string     `json:"language"`
 	Prompt         string     `json:"prompt"`
+	InitialCode    string     `json:"initial_code"`
 	ExpectedAnswer string     `json:"expected_answer"`
 	BlanksData     *BlankData `json:"blanks_data,omitempty"`
 	Choices        []Choice   `json:"choices,omitempty"`
