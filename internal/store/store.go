@@ -1,3 +1,8 @@
+// Package store is the persistence layer. Methods on *Store are the only
+// allowed path from domain logic to SQL — screens and business code never
+// touch database/sql directly. Files split by domain (decks, cards,
+// reviews, sessions, settings, stats) sharing the patch builder and time
+// helpers defined here.
 package store
 
 import (

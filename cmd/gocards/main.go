@@ -1,3 +1,6 @@
+// Command gocards is the terminal flashcards app's entry point. It opens
+// the SQLite store, wires up the screen stack, and hands control to Bubble
+// Tea.
 package main
 
 import (

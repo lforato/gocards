@@ -1,3 +1,8 @@
+// Package screens contains one Bubble Tea model per user-facing screen:
+// dashboard, deck view, create, edit, study, AI generate, settings. Each
+// screen implements tui.Screen and is pushed onto the App's screen stack.
+// The per-card-type dispatch tables (cardUIs, studyBehaviors) and the
+// per-screen helpers (ai, uihelpers, stream) also live here.
 package screens
 
 import (
@@ -50,6 +55,8 @@ type Dashboard struct {
 	err    error
 	w      int
 	h      int
+
+	pendingDelete *models.Deck
 }
 
 func NewDashboard(s *store.Store) *Dashboard {
@@ -123,6 +130,9 @@ func (d *Dashboard) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 }
 
 func (d *Dashboard) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
+	if d.pendingDelete != nil {
+		return d.handleDeleteConfirm(m)
+	}
 	entries := d.entries()
 	switch m.String() {
 	case "q":
@@ -144,8 +154,35 @@ func (d *Dashboard) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 		return d, d.activate(entries)
 	case "S":
 		return d, d.studySelectedDeck(entries)
+	case "D":
+		d.promptDeleteDeck(entries)
 	}
 	return d, nil
+}
+
+func (d *Dashboard) promptDeleteDeck(entries []dashboardEntry) {
+	if d.cursor < 0 || d.cursor >= len(entries) {
+		return
+	}
+	e := entries[d.cursor]
+	if e.kind != entryDeck {
+		return
+	}
+	deck := e.deck.Deck
+	d.pendingDelete = &deck
+}
+
+func (d *Dashboard) handleDeleteConfirm(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
+	target := d.pendingDelete
+	d.pendingDelete = nil
+	if m.String() != "y" && m.String() != "Y" {
+		return d, nil
+	}
+	if err := d.store.DeleteDeck(target.ID); err != nil {
+		return d, tui.ToastErr("delete failed: " + err.Error())
+	}
+	d.loaded = false
+	return d, tea.Batch(tui.Toast(fmt.Sprintf("deleted %q", target.Name)), d.load())
 }
 
 func (d *Dashboard) activate(entries []dashboardEntry) tea.Cmd {
@@ -206,13 +243,23 @@ func (d *Dashboard) View() string {
 		return tui.StyleDanger.Render("error: " + d.err.Error())
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left,
+	body := lipgloss.JoinVertical(lipgloss.Left,
 		d.renderStats(),
 		"",
 		d.renderHeatmap(),
 		"",
 		d.renderEntries(),
 	)
+	if d.pendingDelete != nil {
+		body = lipgloss.JoinVertical(lipgloss.Left, body, "", d.renderDeletePrompt())
+	}
+	return body
+}
+
+func (d *Dashboard) renderDeletePrompt() string {
+	return tui.StyleDanger.Render(fmt.Sprintf(
+		"delete deck %q and all its cards? y/N", d.pendingDelete.Name,
+	))
 }
 
 func (d *Dashboard) renderStats() string {
@@ -276,7 +323,10 @@ func renderDeckRow(deck models.DeckWithCounts, selected bool) string {
 }
 
 func (d *Dashboard) HelpKeys() []string {
-	return []string{"↑/↓ select", "enter open", "S study", "n new", "g ai", "s settings", "r reload", "q quit"}
+	if d.pendingDelete != nil {
+		return []string{"y delete", "N cancel"}
+	}
+	return []string{"↑/↓ select", "enter open", "S study", "D delete", "n new", "g ai", "s settings", "r reload", "q quit"}
 }
 
 func statBox(label, value string, w int) string {

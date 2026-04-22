@@ -2,13 +2,23 @@ package screens
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
 	"github.com/lforato/gocards/internal/tui"
+)
+
+// Rows the deck screen reserves for non-list chrome (header block + blank
+// spacer). Delete prompt, when visible, eats two more rows below.
+const (
+	deckHeaderRows  = 4
+	deckPromptRows  = 2
+	deckMinListRows = 3
 )
 
 type deckLoadedMsg struct {
@@ -26,10 +36,18 @@ type DeckView struct {
 	loaded        bool
 	err           error
 	confirmDelete bool
+
+	viewport viewport.Model
+	w, h     int
 }
 
 func NewDeckView(s *store.Store, d models.Deck) *DeckView {
-	return &DeckView{store: s, deck: d, dueIDs: map[int64]bool{}}
+	return &DeckView{
+		store:    s,
+		deck:     d,
+		dueIDs:   map[int64]bool{},
+		viewport: viewport.New(80, 10),
+	}
 }
 
 func (d *DeckView) Init() tea.Cmd { return d.load() }
@@ -50,6 +68,10 @@ func (d *DeckView) load() tea.Cmd {
 
 func (d *DeckView) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	switch m := msg.(type) {
+	case tea.WindowSizeMsg:
+		d.w, d.h = m.Width, m.Height
+		d.resizeViewport()
+		return d, nil
 	case deckLoadedMsg:
 		d.applyLoaded(m)
 		return d, nil
@@ -70,6 +92,7 @@ func (d *DeckView) applyLoaded(m deckLoadedMsg) {
 	if d.cursor >= len(d.cards) {
 		d.cursor = max(0, len(d.cards)-1)
 	}
+	d.resizeViewport()
 }
 
 func (d *DeckView) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
@@ -96,6 +119,7 @@ func (d *DeckView) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	case "d", "delete", "x":
 		if d.cursor < len(d.cards) {
 			d.confirmDelete = true
+			d.resizeViewport()
 		}
 	case "r":
 		d.loaded = false
@@ -106,6 +130,7 @@ func (d *DeckView) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 
 func (d *DeckView) handleDeleteConfirm(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	d.confirmDelete = false
+	d.resizeViewport()
 	if m.String() != "y" && m.String() != "Y" {
 		return d, nil
 	}
@@ -135,6 +160,32 @@ func (d *DeckView) dueCount() int {
 	return n
 }
 
+func (d *DeckView) resizeViewport() {
+	if d.w <= 0 {
+		return
+	}
+	reserved := deckHeaderRows
+	if d.confirmDelete {
+		reserved += deckPromptRows
+	}
+	d.viewport.Width = d.w
+	d.viewport.Height = max(deckMinListRows, d.h-reserved)
+}
+
+// scrollToCursor keeps the highlighted card inside the viewport's visible
+// window. Each card is exactly one line so cursor index == line index.
+func (d *DeckView) scrollToCursor() {
+	if d.viewport.Height <= 0 {
+		return
+	}
+	switch {
+	case d.cursor < d.viewport.YOffset:
+		d.viewport.SetYOffset(d.cursor)
+	case d.cursor >= d.viewport.YOffset+d.viewport.Height:
+		d.viewport.SetYOffset(d.cursor - d.viewport.Height + 1)
+	}
+}
+
 func (d *DeckView) View() string {
 	if !d.loaded {
 		return tui.StyleMuted.Render("loading deck…")
@@ -143,7 +194,10 @@ func (d *DeckView) View() string {
 		return tui.StyleDanger.Render("error: " + d.err.Error())
 	}
 
-	body := lipgloss.JoinVertical(lipgloss.Left, d.renderHeader(), "", d.renderCards())
+	d.viewport.SetContent(d.renderCards())
+	d.scrollToCursor()
+
+	body := lipgloss.JoinVertical(lipgloss.Left, d.renderHeader(), "", d.viewport.View())
 	if d.confirmDelete && d.cursor < len(d.cards) {
 		prompt := tui.StyleDanger.Render(fmt.Sprintf("delete card %d? y/N", d.cards[d.cursor].ID))
 		return lipgloss.JoinVertical(lipgloss.Left, body, "", prompt)
@@ -170,7 +224,7 @@ func (d *DeckView) renderCards() string {
 	for i, c := range d.cards {
 		rows[i] = d.renderCardRow(c, i == d.cursor)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	return strings.Join(rows, "\n")
 }
 
 func (d *DeckView) renderCardRow(c models.Card, selected bool) string {

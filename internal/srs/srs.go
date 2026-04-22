@@ -1,3 +1,8 @@
+// Package srs implements the spaced-repetition scheduler. CalculateNext
+// takes the current ease/interval and a 1-5 grade and returns the next
+// review's ease, interval (in days), and due timestamp. The algorithm
+// mirrors the JS version in the paired web app so reviews stay consistent
+// across clients.
 package srs
 
 import (

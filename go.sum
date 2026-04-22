@@ -52,6 +52,8 @@ github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUq
 github.com/hexops/gotextdiff v1.0.3/go.mod h1:pSWU5MAI3yDq+fZBTazCSJysOMbxWL1BSow5/V2vxeg=
 github.com/lforato/vimtea v0.0.3-0.20260421213512-6434facb4fa8 h1:X9sZ7WICzr5DKDBYzfCpy9xmkA2yGGTrEV2hjqzGkj8=
 github.com/lforato/vimtea v0.0.3-0.20260421213512-6434facb4fa8/go.mod h1:1X7K6GeZeyhLYILz4MRZ0fAgwIS2IqbCqSYH6wL4Xlo=
+github.com/lforato/vimtea v0.0.3-0.20260421233109-563a2e156427 h1:ZzrYt/116DjYvYtr13cb6/oFjD3LS/TJgiTsonF2nEM=
+github.com/lforato/vimtea v0.0.3-0.20260421233109-563a2e156427/go.mod h1:1X7K6GeZeyhLYILz4MRZ0fAgwIS2IqbCqSYH6wL4Xlo=
 github.com/lucasb-eyer/go-colorful v1.4.0 h1:UtrWVfLdarDgc44HcS7pYloGHJUjHV/4FwW4TvVgFr4=
 github.com/lucasb-eyer/go-colorful v1.4.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=

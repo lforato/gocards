@@ -1,3 +1,6 @@
+// Package widgets holds reusable UI components that aren't tied to a
+// specific screen: the GitHub-style activity heatmap, the vim-backed
+// modal code editor, and a textinput Form with focus cycling.
 package widgets
 
 import (

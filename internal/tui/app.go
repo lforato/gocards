@@ -1,3 +1,8 @@
+// Package tui is the root of the Bubble Tea layer. It owns App (the
+// screen-stack model), the Screen interface every screen implements, the
+// navigation/toast message types, and the lipgloss color + style palette
+// consumed by screens and widgets. Concrete screens live in
+// tui/screens/; reusable widgets in tui/widgets/.
 package tui
 
 import (

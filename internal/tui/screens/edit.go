@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -45,7 +46,8 @@ type Edit struct {
 	choiceInput   textinput.Model
 	choiceEditIdx int
 
-	w, h int
+	viewport viewport.Model
+	w, h     int
 }
 
 func NewEdit(s *store.Store, card models.Card) *Edit {
@@ -71,6 +73,7 @@ func NewEdit(s *store.Store, card models.Card) *Edit {
 		language:      lang,
 		choiceInput:   ci,
 		choiceEditIdx: -1,
+		viewport:      viewport.New(80, 10),
 	}
 	e.focus = e.visibleFields()[0]
 	e.updateFocus()
@@ -107,6 +110,7 @@ func (e *Edit) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	if sz, ok := msg.(tea.WindowSizeMsg); ok {
 		e.w = sz.Width
 		e.h = sz.Height
+		e.resizeViewport()
 		if e.editorActive {
 			e.editor = e.editor.SetSize(e.editorWidth(), e.editorHeight())
 		}
@@ -254,91 +258,150 @@ func (e *Edit) updateKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 }
 
 
+const editViewportFallbackH = 20
+
+func (e *Edit) resizeViewport() {
+	w := e.w
+	if w <= 0 {
+		w = previewBoxFallbackW
+	}
+	h := e.h
+	if h <= 0 {
+		h = editViewportFallbackH
+	}
+	e.viewport.Width = w
+	e.viewport.Height = max(3, h)
+}
+
+// scrollToField ensures the focused field's label is visible. If the field
+// sits above the current window, scroll up so the label is at the top;
+// if it sits below, scroll down so the label is at the top. This keeps
+// labels anchored predictably as the user tabs through tall forms.
+func (e *Edit) scrollToField(fieldTop map[editField]int) {
+	top, ok := fieldTop[e.focus]
+	if !ok || e.viewport.Height <= 0 {
+		return
+	}
+	if top < e.viewport.YOffset || top >= e.viewport.YOffset+e.viewport.Height {
+		e.viewport.SetYOffset(top)
+	}
+}
+
+// editView accumulates rendered lines and records each focusable field's
+// starting line so the viewport can scroll to it on focus change.
+type editView struct {
+	lines    []string
+	fieldTop map[editField]int
+}
+
+func newEditView() *editView { return &editView{fieldTop: map[editField]int{}} }
+
+func (v *editView) add(lines ...string)   { v.lines = append(v.lines, lines...) }
+func (v *editView) blank()                { v.lines = append(v.lines, "") }
+func (v *editView) field(f editField, lines ...string) {
+	v.fieldTop[f] = len(v.lines)
+	v.lines = append(v.lines, lines...)
+}
+func (v *editView) render() string { return strings.Join(v.lines, "\n") }
+
 func (e *Edit) View() string {
 	if e.editorActive {
 		return e.editor.View()
 	}
 
-	label := func(s string, sel bool) string {
-		if sel {
-			return tui.StyleSelected.Render("▶ " + s)
-		}
-		return tui.StyleMuted.Render("  " + s)
-	}
+	e.resizeViewport()
+	v := newEditView()
+	e.buildView(v)
+	e.viewport.SetContent(v.render())
+	e.scrollToField(v.fieldTop)
+	return e.viewport.View()
+}
 
-	title := "New card"
+func (e *Edit) buildView(v *editView) {
+	v.add(tui.StyleTitle.Render(e.title()), "")
+	e.addTypeSection(v)
+	v.blank()
+	e.addLanguageSection(v)
+	v.blank()
+	e.addPromptSection(v)
+	v.blank()
+	e.addTypeSpecificSections(v)
+}
+
+func (e *Edit) title() string {
 	if e.card.ID > 0 {
-		title = fmt.Sprintf("Edit card #%d", e.card.ID)
+		return fmt.Sprintf("Edit card #%d", e.card.ID)
 	}
+	return "New card"
+}
 
-	typeLine := fmt.Sprintf("%s  %s",
+func (e *Edit) fieldLabel(text string, field editField) string {
+	if e.focus == field {
+		return tui.StyleSelected.Render("▶ " + text)
+	}
+	return tui.StyleMuted.Render("  " + text)
+}
+
+func (e *Edit) typeLine() string {
+	return fmt.Sprintf("%s  %s",
 		typeBadge(e.card.Type, true),
 		tui.StyleMuted.Render("(1 code · 2 mcq · 3 fill · 4 exp)"),
 	)
+}
 
-	var rows []string
-	rows = append(rows, tui.StyleTitle.Render(title), "")
-
+// addTypeSection renders the Type row. For code cards the row is a muted
+// header (type is locked to code), for others it's a focusable field that
+// accepts 1-4 to switch types.
+func (e *Edit) addTypeSection(v *editView) {
 	if e.card.Type == models.CardCode {
-		rows = append(rows,
-			tui.StyleMuted.Render("Type"),
-			"  "+typeLine,
-			"",
-			label("Language", e.focus == fLanguage),
-			"  "+e.language.View(),
-			"",
-			label("Question", e.focus == fPrompt),
-			previewBox(e.card.Prompt, "(empty — press enter to edit)"),
-			"",
-			label("Initial code", e.focus == fInitialCode),
-			previewBox(e.card.InitialCode, "(empty — press enter to edit)"),
-			"",
-			label("Expected answer", e.focus == fExpected),
-			previewBox(e.card.ExpectedAnswer, "(empty — press enter to edit)"),
-			"",
-		)
-		return lipgloss.JoinVertical(lipgloss.Left, rows...)
+		v.add(tui.StyleMuted.Render("Type"), "  "+e.typeLine())
+		return
 	}
+	v.field(fType, e.fieldLabel("Type", fType), "  "+e.typeLine())
+}
 
-	rows = append(rows,
-		label("Type", e.focus == fType),
-		"  "+typeLine,
-		"",
-		label("Language", e.focus == fLanguage),
-		"  "+e.language.View(),
-		"",
-		label("Question", e.focus == fPrompt),
-		previewBox(e.card.Prompt, "(empty — press enter to open vim)"),
-		"",
-	)
+func (e *Edit) addLanguageSection(v *editView) {
+	v.field(fLanguage, e.fieldLabel("Language", fLanguage), "  "+e.language.View())
+}
 
+func (e *Edit) addPromptSection(v *editView) {
+	v.field(fPrompt, e.fieldLabel("Question", fPrompt),
+		e.previewBox(e.card.Prompt, placeholderFor(e.card.Type)))
+}
+
+func (e *Edit) addTypeSpecificSections(v *editView) {
 	switch e.card.Type {
+	case models.CardCode:
+		v.field(fInitialCode, e.fieldLabel("Initial code", fInitialCode),
+			e.previewBox(e.card.InitialCode, "(empty — press enter to edit)"))
+		v.blank()
+		v.field(fExpected, e.fieldLabel("Expected answer", fExpected),
+			e.previewBox(e.card.ExpectedAnswer, "(empty — press enter to edit)"))
+		v.blank()
 	case models.CardExp:
-		rows = append(rows,
-			label("Expected answer", e.focus == fExpected),
-			previewBox(e.card.ExpectedAnswer, "(empty — press enter to open vim)"),
-			"",
-		)
+		v.field(fExpected, e.fieldLabel("Expected answer", fExpected),
+			e.previewBox(e.card.ExpectedAnswer, "(empty — press enter to open vim)"))
+		v.blank()
 	case models.CardMCQ:
-		rows = append(rows,
-			label("Choices", e.focus == fChoices),
-			e.viewChoices(),
-			"",
-		)
+		v.field(fChoices, e.fieldLabel("Choices", fChoices), e.viewChoices())
+		v.blank()
 	case models.CardFill:
 		tmpl := ""
 		if e.card.BlanksData != nil {
 			tmpl = e.card.BlanksData.Template
 		}
-		rows = append(rows,
-			label("Template", e.focus == fTemplate),
-			previewBox(tmpl, "(empty — press enter to open vim)"),
-			tui.StyleMuted.Render("  {{answer}} marks a blank"),
-			"",
-		)
+		v.field(fTemplate, e.fieldLabel("Template", fTemplate),
+			e.previewBox(tmpl, "(empty — press enter to open vim)"),
+			tui.StyleMuted.Render("  {{answer}} marks a blank"))
+		v.blank()
 	}
+}
 
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+func placeholderFor(t models.CardType) string {
+	if t == models.CardCode {
+		return "(empty — press enter to edit)"
+	}
+	return "(empty — press enter to open vim)"
 }
 
 func (e *Edit) HelpKeys() []string {
@@ -357,22 +420,40 @@ func (e *Edit) HelpKeys() []string {
 	return []string{"tab cycle", "enter edit field", "1-4 type", "ctrl+s save", "esc back"}
 }
 
-func previewBox(content, placeholder string) string {
-	if strings.TrimSpace(content) == "" {
-		return lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(tui.ColorBorder).
-			Padding(0, 1).
-			Foreground(tui.ColorMuted).
-			Render(placeholder)
-	}
-	lines := strings.Split(content, "\n")
-	if len(lines) > 10 {
-		lines = append(lines[:10], tui.StyleMuted.Render("…"))
-	}
-	return lipgloss.NewStyle().
+const (
+	previewBoxMaxLines  = 10
+	previewBoxFallbackW = 80
+	previewBoxPadding   = 2 // 1 cell each side
+	previewBoxBorder    = 2 // 1 cell each side
+)
+
+// previewBox renders content inside a rounded border sized to the screen.
+// An explicit inner width is mandatory — without it, lipgloss draws a
+// jagged border around uneven-length lines.
+func (e *Edit) previewBox(content, placeholder string) string {
+	innerW := e.previewInnerWidth()
+
+	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(tui.ColorBorder).
 		Padding(0, 1).
-		Render(strings.Join(lines, "\n"))
+		Width(innerW)
+
+	if strings.TrimSpace(content) == "" {
+		return style.Foreground(tui.ColorMuted).Render(placeholder)
+	}
+
+	lines := strings.Split(content, "\n")
+	if len(lines) > previewBoxMaxLines {
+		lines = append(lines[:previewBoxMaxLines], tui.StyleMuted.Render("…"))
+	}
+	return style.Render(strings.Join(lines, "\n"))
+}
+
+func (e *Edit) previewInnerWidth() int {
+	w := e.w
+	if w <= 0 {
+		w = previewBoxFallbackW
+	}
+	return max(10, w-previewBoxBorder-previewBoxPadding)
 }

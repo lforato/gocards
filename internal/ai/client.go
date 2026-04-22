@@ -1,3 +1,8 @@
+// Package ai wraps the Anthropic SDK with the three stream-based
+// operations gocards needs: one-shot card generation, conversational
+// authoring, and answer grading. Prompt construction and panic-safe
+// goroutine streaming live here so the TUI screens can consume plain
+// channels of Event.
 package ai
 
 import (

@@ -7,7 +7,7 @@ require (
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
-	github.com/lforato/vimtea v0.0.3-0.20260421213512-6434facb4fa8
+	github.com/lforato/vimtea v0.0.3-0.20260421233109-563a2e156427
 	modernc.org/sqlite v1.49.1
 )
 

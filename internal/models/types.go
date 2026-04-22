@@ -1,3 +1,7 @@
+// Package models holds the domain types shared across every layer: decks,
+// cards (and their type-specific payloads), reviews, study sessions, and
+// the card-kind registry that drives extension points. These types are
+// JSON-compatible with the sibling web app's schema.
 package models
 
 import "time"
