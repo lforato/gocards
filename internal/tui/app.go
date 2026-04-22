@@ -49,9 +49,9 @@ const (
 	frameHelpRows     = 1
 	frameVertical     = frameBorderWidth + framePaddingWidth + frameHeaderRows + frameBlankRows + frameHelpRows
 
-	minContentW  = 110
-	minTerminalW = 60
-	minTerminalH = 16
+	minContentW   = 110
+	minTerminalW  = 60
+	minTerminalH  = 16
 	toastDuration = 2 * time.Second
 )
 

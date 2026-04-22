@@ -11,6 +11,7 @@ import (
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
 	"github.com/lforato/gocards/internal/tui"
+	"github.com/lforato/gocards/internal/tui/widgets"
 )
 
 type createStep int
@@ -21,22 +22,27 @@ const (
 	stepPickType
 )
 
+// deckFormIdx names the slots in the new-deck form so index lookups read
+// like code instead of magic numbers.
+const (
+	deckFormName = iota
+	deckFormDesc
+	deckFormColor
+)
+
+const defaultDeckColor = "#f59e0b"
+
 type Create struct {
 	store *store.Store
-
-	step createStep
+	step  createStep
 
 	decks       []models.Deck
 	deckCursor  int
 	preselected int64
 
-	newName   textinput.Model
-	newDesc   textinput.Model
-	newColor  textinput.Model
-	formFocus int
+	deckForm *widgets.Form
 
 	targetDeck *models.Deck
-
 	typeCursor int
 }
 
@@ -50,30 +56,32 @@ func cardTypes() []models.CardType {
 }
 
 func NewCreate(s *store.Store, preselectedDeckID int64) *Create {
-	nn := textinput.New()
-	nn.Placeholder = "deck name"
-	nn.CharLimit = 80
-	nn.Width = 50
-
-	nd := textinput.New()
-	nd.Placeholder = "short description (optional)"
-	nd.CharLimit = 200
-	nd.Width = 50
-
-	nc := textinput.New()
-	nc.Placeholder = "#f59e0b"
-	nc.CharLimit = 9
-	nc.Width = 12
-	nc.SetValue("#f59e0b")
-
 	return &Create{
 		store:       s,
 		step:        stepPickDeck,
 		preselected: preselectedDeckID,
-		newName:     nn,
-		newDesc:     nd,
-		newColor:    nc,
+		deckForm:    widgets.NewForm(newDeckFormInputs()),
 	}
+}
+
+func newDeckFormInputs() []textinput.Model {
+	name := textinput.New()
+	name.Placeholder = "deck name"
+	name.CharLimit = 80
+	name.Width = 50
+
+	desc := textinput.New()
+	desc.Placeholder = "short description (optional)"
+	desc.CharLimit = 200
+	desc.Width = 50
+
+	color := textinput.New()
+	color.Placeholder = defaultDeckColor
+	color.CharLimit = 9
+	color.Width = 12
+	color.SetValue(defaultDeckColor)
+
+	return []textinput.Model{name, desc, color}
 }
 
 func (c *Create) Init() tea.Cmd {
@@ -95,129 +103,112 @@ func (c *Create) loadDecks() tea.Cmd {
 func (c *Create) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case createDecksLoadedMsg:
-		c.decks = m.decks
-		if c.preselected > 0 {
-			for _, d := range m.decks {
-				if d.ID == c.preselected {
-					dd := d
-					c.targetDeck = &dd
-					c.step = stepPickType
-					return c, nil
-				}
-			}
-		}
+		c.applyLoadedDecks(m)
 		return c, nil
-
 	case tea.KeyMsg:
 		return c.handleKey(m)
 	}
-
-	var cmd tea.Cmd
 	if c.step == stepNewDeck {
-		switch c.formFocus {
-		case 0:
-			c.newName, cmd = c.newName.Update(msg)
-		case 1:
-			c.newDesc, cmd = c.newDesc.Update(msg)
-		case 2:
-			c.newColor, cmd = c.newColor.Update(msg)
+		return c, c.deckForm.ForwardToFocused(msg)
+	}
+	return c, nil
+}
+
+func (c *Create) applyLoadedDecks(m createDecksLoadedMsg) {
+	c.decks = m.decks
+	if c.preselected == 0 {
+		return
+	}
+	for _, d := range m.decks {
+		if d.ID == c.preselected {
+			selected := d
+			c.targetDeck = &selected
+			c.step = stepPickType
+			return
 		}
 	}
-	return c, cmd
 }
 
 func (c *Create) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	if m.String() == "esc" {
 		return c, navBack
 	}
-
 	switch c.step {
 	case stepPickDeck:
-		switch m.String() {
-		case "up", "k":
-			c.deckCursor = cursorUp(c.deckCursor)
-		case "down", "j":
-			c.deckCursor = cursorDown(c.deckCursor, len(c.decks)+1)
-		case "enter":
-			if c.deckCursor == len(c.decks) || len(c.decks) == 0 {
-				c.step = stepNewDeck
-				c.formFocus = 0
-				c.newName.Focus()
-				c.newDesc.Blur()
-				c.newColor.Blur()
-				return c, textinput.Blink
-			}
-			d := c.decks[c.deckCursor]
-			c.targetDeck = &d
-			c.step = stepPickType
-			return c, nil
-		}
-
+		return c.handlePickDeckKey(m)
 	case stepNewDeck:
-		switch m.String() {
-		case "tab", "down":
-			c.cycleFormFocus(1)
-			return c, nil
-		case "shift+tab", "up":
-			c.cycleFormFocus(-1)
-			return c, nil
-		case "enter":
-			if c.newName.Value() == "" {
-				return c, tui.ToastErr("deck name required")
-			}
-			color := strings.TrimSpace(c.newColor.Value())
-			if color == "" {
-				color = "#f59e0b"
-			}
-			deck, err := c.store.CreateDeck(c.newName.Value(), c.newDesc.Value(), color)
-			if err != nil {
-				return c, tui.ToastErr("create failed: " + err.Error())
-			}
-			c.targetDeck = deck
-			c.step = stepPickType
-			return c, nil
-		}
-		var cmd tea.Cmd
-		switch c.formFocus {
-		case 0:
-			c.newName, cmd = c.newName.Update(m)
-		case 1:
-			c.newDesc, cmd = c.newDesc.Update(m)
-		case 2:
-			c.newColor, cmd = c.newColor.Update(m)
-		}
-		return c, cmd
-
+		return c.handleNewDeckKey(m)
 	case stepPickType:
-		switch m.String() {
-		case "up", "k":
-			c.typeCursor = cursorUp(c.typeCursor)
-		case "down", "j":
-			c.typeCursor = cursorDown(c.typeCursor, len(cardTypes()))
-		case "enter":
-			if c.targetDeck == nil {
-				return c, nil
-			}
-			t := cardTypes()[c.typeCursor]
-			draft := models.Card{
-				DeckID:   c.targetDeck.ID,
-				Type:     t,
-				Language: "javascript",
-			}
-			return c, navTo(NewEdit(c.store, draft))
-		}
+		return c.handlePickTypeKey(m)
 	}
 	return c, nil
 }
 
-func (c *Create) cycleFormFocus(delta int) {
-	fields := []*textinput.Model{&c.newName, &c.newDesc, &c.newColor}
-	fields[c.formFocus].Blur()
-	c.formFocus = cycleFocus(c.formFocus, delta, len(fields))
-	fields[c.formFocus].Focus()
+func (c *Create) handlePickDeckKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
+	switch m.String() {
+	case "up", "k":
+		c.deckCursor = cursorUp(c.deckCursor)
+	case "down", "j":
+		c.deckCursor = cursorDown(c.deckCursor, len(c.decks)+1)
+	case "enter":
+		if c.deckCursor == len(c.decks) || len(c.decks) == 0 {
+			c.step = stepNewDeck
+			return c, textinput.Blink
+		}
+		selected := c.decks[c.deckCursor]
+		c.targetDeck = &selected
+		c.step = stepPickType
+	}
+	return c, nil
 }
 
-// --- view ---
+func (c *Create) handleNewDeckKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
+	if c.deckForm.HandleKey(m) {
+		return c, nil
+	}
+	if m.String() == "enter" {
+		return c.submitNewDeck()
+	}
+	return c, c.deckForm.ForwardToFocused(m)
+}
+
+func (c *Create) submitNewDeck() (tui.Screen, tea.Cmd) {
+	name := c.deckForm.Value(deckFormName)
+	if name == "" {
+		return c, tui.ToastErr("deck name required")
+	}
+	color := strings.TrimSpace(c.deckForm.Value(deckFormColor))
+	if color == "" {
+		color = defaultDeckColor
+	}
+	deck, err := c.store.CreateDeck(name, c.deckForm.Value(deckFormDesc), color)
+	if err != nil {
+		return c, tui.ToastErr("create failed: " + err.Error())
+	}
+	c.targetDeck = deck
+	c.step = stepPickType
+	return c, nil
+}
+
+func (c *Create) handlePickTypeKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
+	switch m.String() {
+	case "up", "k":
+		c.typeCursor = cursorUp(c.typeCursor)
+	case "down", "j":
+		c.typeCursor = cursorDown(c.typeCursor, len(cardTypes()))
+	case "enter":
+		if c.targetDeck == nil {
+			return c, nil
+		}
+		draft := models.Card{
+			DeckID:   c.targetDeck.ID,
+			Type:     cardTypes()[c.typeCursor],
+			Language: "javascript",
+		}
+		return c, navTo(NewEdit(c.store, draft))
+	}
+	return c, nil
+}
 
 func (c *Create) View() string {
 	switch c.step {
@@ -254,11 +245,10 @@ func (c *Create) viewPickDeck() string {
 }
 
 func (c *Create) viewNewDeck() string {
-	rows := []string{
-		tui.StyleTitle.Render("Create deck"), "",
-		tui.StyleMuted.Render("Name"), c.newName.View(), "",
-		tui.StyleMuted.Render("Description"), c.newDesc.View(), "",
-		tui.StyleMuted.Render("Color (#hex)"), c.newColor.View(),
+	rows := []string{tui.StyleTitle.Render("Create deck"), ""}
+	labels := []string{"Name", "Description", "Color (#hex)"}
+	for i, label := range labels {
+		rows = append(rows, tui.StyleMuted.Render(label), c.deckForm.Input(i).View(), "")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
