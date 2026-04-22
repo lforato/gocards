@@ -1,168 +1,13 @@
 package ai
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"strings"
-
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
-
-	"github.com/lforato/gocards/internal/models"
 )
 
-const Model = anthropic.ModelClaudeHaiku4_5_20251001
-
-// Event is one piece of stream output.
-type Event struct {
-	Chunk string // incremental text
-	Err   error
-	Done  bool
-	Full  string // final accumulated text, only set when Done
-}
-
-// ResolveAPIKey returns the key from env or from the DB-backed settings getter.
-func ResolveAPIKey(settingKey func() (string, bool, error)) string {
-	if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
-		return k
-	}
-	if settingKey != nil {
-		if v, ok, _ := settingKey(); ok {
-			return v
-		}
-	}
-	return ""
-}
-
-// Client is a thin wrapper around the Anthropic SDK.
-type Client struct {
-	inner anthropic.Client
-}
-
-func New(apiKey string) *Client {
-	c := anthropic.NewClient(option.WithAPIKey(apiKey))
-	return &Client{inner: c}
-}
-
-// Generate starts a flashcard-generation stream. The first call uses topic +
-// history = []. Subsequent turns pass history (including the assistant's prior
-// reply) to keep context.
-func (c *Client) Generate(ctx context.Context, topic string, history []models.GradingMessage, preferredLanguages string) <-chan Event {
-	system := generateSystem(preferredLanguages)
-	var messages []anthropic.MessageParam
-	if len(history) == 0 {
-		messages = append(messages, anthropic.NewUserMessage(
-			anthropic.NewTextBlock(fmt.Sprintf("Generate flashcards about: %s", topic)),
-		))
-	} else {
-		for _, m := range history {
-			messages = append(messages, msgParam(m))
-		}
-	}
-
-	return c.stream(ctx, system, messages, 2000)
-}
-
-// Chat runs a conversational flashcard-authoring session with Claude.
-// history is the full back-and-forth so far, ending with the user's newest
-// message. The deck's name + description are passed to the system prompt so
-// the model knows what context it's generating for.
-//
-// Claude is instructed to converse normally in markdown and, when ready, emit
-// one or more cards wrapped in <card>...</card> JSON blocks. The caller
-// (tui.AIGenerate) parses those out of the final text to populate a review
-// queue.
-func (c *Client) Chat(ctx context.Context, deckName, deckDescription string, history []models.GradingMessage) <-chan Event {
-	system := chatSystem(deckName, deckDescription)
-	var messages []anthropic.MessageParam
-	for _, m := range history {
-		messages = append(messages, msgParam(m))
-	}
-	return c.stream(ctx, system, messages, 4000)
-}
-
-type GradeInput struct {
-	Prompt         string
-	ExpectedAnswer string
-	UserAnswer     string
-	History        []models.GradingMessage
-	Mode           string // "code" | "explanation"
-}
-
-func (c *Client) Grade(ctx context.Context, in GradeInput) <-chan Event {
-	system := gradeSystem(in)
-
-	var messages []anthropic.MessageParam
-	if len(in.History) == 0 {
-		var initial string
-		if in.Mode == "explanation" {
-			initial = fmt.Sprintf("Student's annotated code (the block above with their comments added):\n\n```\n%s\n```", in.UserAnswer)
-		} else {
-			initial = fmt.Sprintf("Student's answer:\n```\n%s\n```", in.UserAnswer)
-		}
-		messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(initial)))
-	} else {
-		for _, m := range in.History {
-			messages = append(messages, msgParam(m))
-		}
-	}
-
-	return c.stream(ctx, system, messages, 500)
-}
-
-func msgParam(m models.GradingMessage) anthropic.MessageParam {
-	if m.Role == "assistant" {
-		return anthropic.NewAssistantMessage(anthropic.NewTextBlock(m.Content))
-	}
-	return anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content))
-}
-
-func (c *Client) stream(ctx context.Context, system string, messages []anthropic.MessageParam, maxTokens int64) <-chan Event {
-	ch := make(chan Event, 16)
-
-	go func() {
-		defer close(ch)
-		defer func() {
-			if r := recover(); r != nil {
-				select {
-				case ch <- Event{Err: fmt.Errorf("stream panic: %v", r)}:
-				default:
-				}
-			}
-		}()
-
-		stream := c.inner.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
-			Model:     Model,
-			MaxTokens: maxTokens,
-			System:    []anthropic.TextBlockParam{{Text: system}},
-			Messages:  messages,
-		})
-
-		var full strings.Builder
-		for stream.Next() {
-			event := stream.Current()
-			if ev, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
-				if td, ok := ev.Delta.AsAny().(anthropic.TextDelta); ok && td.Text != "" {
-					full.WriteString(td.Text)
-					select {
-					case ch <- Event{Chunk: td.Text}:
-					case <-ctx.Done():
-						return
-					}
-				}
-			}
-		}
-		if err := stream.Err(); err != nil {
-			ch <- Event{Err: err}
-			return
-		}
-		ch <- Event{Done: true, Full: full.String()}
-	}()
-
-	return ch
-}
-
+// chatSystem builds the system prompt for the conversational card author. The
+// deck name/description are woven in so the model knows what bucket it's
+// authoring for; missing description falls back to a neutral placeholder.
 func chatSystem(deckName, deckDescription string) string {
 	desc := deckDescription
 	if strings.TrimSpace(desc) == "" {
@@ -204,6 +49,7 @@ Rules for "prompt":
 - If the question references code, include the full code literally inside the prompt in a fenced code block.`, deckName, desc)
 }
 
+// generateSystem builds the system prompt for one-shot card generation.
 func generateSystem(preferredLanguages string) string {
 	if preferredLanguages == "" {
 		preferredLanguages = "javascript, typescript"
@@ -244,6 +90,10 @@ Rules for "expected_answer":
 - Always include this field, even for fill cards.`, preferredLanguages)
 }
 
+// gradeSystem builds the system prompt for code/explanation grading. The
+// rubric differs materially: explanation grading evaluates student-authored
+// comments against a reference explanation, code grading evaluates a solution
+// against an expected approach.
 func gradeSystem(in GradeInput) string {
 	if in.Mode == "explanation" {
 		return fmt.Sprintf(`You are a terse programming tutor grading a student's INLINE COMMENTS added to a code block.

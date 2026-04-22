@@ -1,0 +1,73 @@
+package tui
+
+import (
+	"fmt"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/lforato/gocards/internal/models"
+)
+
+func (s *Study) handleMCQKey(m tea.KeyMsg, card *models.Card) (Screen, tea.Cmd) {
+	if len(card.Choices) == 0 {
+		return s, ToastErr("card has no choices — skipping")
+	}
+	if s.mcqCursor >= len(card.Choices) {
+		s.mcqCursor = 0
+	}
+	switch m.String() {
+	case "up", "k":
+		s.mcqCursor = cursorUp(s.mcqCursor)
+	case "down", "j":
+		s.mcqCursor = cursorDown(s.mcqCursor, len(card.Choices))
+	case "enter", " ":
+		chosen := card.Choices[s.mcqCursor]
+		grade := 5
+		note := "correct"
+		if !chosen.IsCorrect {
+			grade = 1
+			note = "incorrect"
+		}
+		s.resultGrade = grade
+		s.resultNote = note
+		s.stage = stageAnswered
+		return s, s.recordReview(grade)
+	}
+	return s, nil
+}
+
+func (s *Study) viewMCQ(card *models.Card) string {
+	rows := []string{renderPrompt(card.Prompt), ""}
+	for i, ch := range card.Choices {
+		rows = append(rows, mcqChoiceRow(ch, i, s.mcqCursor, s.stage))
+	}
+	if s.stage == stageAnswered {
+		rows = append(rows, "", StylePrimary.Render(fmt.Sprintf("→ %s  (grade %d)", s.resultNote, s.resultGrade)))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+// mcqChoiceRow renders one choice row — prefix + (id. text) with state-aware
+// coloring. Broken out from viewMCQ so the per-row branching doesn't hide the
+// overall layout.
+func mcqChoiceRow(ch models.Choice, idx, cursor int, stage studyStage) string {
+	selected := idx == cursor
+	prefix := "  "
+	if selected && stage == stageQuestion {
+		prefix = StylePrimary.Render("▶ ")
+	}
+
+	label := fmt.Sprintf("%s. %s", ch.ID, ch.Text)
+	switch {
+	case stage == stageAnswered && ch.IsCorrect:
+		label = StyleSuccess.Render(label + "  ✓")
+	case stage == stageAnswered && selected && !ch.IsCorrect:
+		label = StyleDanger.Render(label + "  ✗")
+	case stage == stageAnswered:
+		label = StyleMuted.Render(label)
+	case selected:
+		label = StyleSelected.Render(label)
+	}
+	return prefix + label
+}
