@@ -5,9 +5,6 @@ import (
 	"strings"
 )
 
-// chatSystem builds the system prompt for the conversational card author. The
-// deck name/description are woven in so the model knows what bucket it's
-// authoring for; missing description falls back to a neutral placeholder.
 func chatSystem(deckName, deckDescription string) string {
 	desc := deckDescription
 	if strings.TrimSpace(desc) == "" {
@@ -49,7 +46,6 @@ Rules for "prompt":
 - If the question references code, include the full code literally inside the prompt in a fenced code block.`, deckName, desc)
 }
 
-// generateSystem builds the system prompt for one-shot card generation.
 func generateSystem(preferredLanguages string) string {
 	if preferredLanguages == "" {
 		preferredLanguages = "javascript, typescript"
@@ -90,10 +86,8 @@ Rules for "expected_answer":
 - Always include this field, even for fill cards.`, preferredLanguages)
 }
 
-// gradeSystem builds the system prompt for code/explanation grading. The
-// rubric differs materially: explanation grading evaluates student-authored
-// comments against a reference explanation, code grading evaluates a solution
-// against an expected approach.
+// gradeSystem selects between two rubrics: explanation-mode grades
+// student-authored comments; code-mode grades a full solution.
 func gradeSystem(in GradeInput) string {
 	if in.Mode == "explanation" {
 		return fmt.Sprintf(`You are a terse programming tutor grading a student's INLINE COMMENTS added to a code block.

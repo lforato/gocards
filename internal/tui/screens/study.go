@@ -29,10 +29,8 @@ const (
 	stageDone
 )
 
-// Study is the review-loop screen. It drives a session of due cards through
-// the stages defined above. Card-type-specific logic lives in study_mcq.go,
-// study_fill.go, and study_code.go to keep this file focused on the overall
-// state machine.
+// Study drives the review loop. Per-card-type logic (MCQ/fill/code/exp)
+// lives in study_mcq.go, study_fill.go, and study_code.go.
 type Study struct {
 	store *store.Store
 	deck  models.Deck
@@ -102,8 +100,6 @@ func (s *Study) current() *models.Card {
 	return &s.cards[s.idx]
 }
 
-// resetPerCardState reinitializes all card-type-specific state (MCQ cursor,
-// fill inputs, code editor) for the card at s.idx. Called after advancing.
 func (s *Study) resetPerCardState() tea.Cmd {
 	card := s.current()
 	if card == nil {
@@ -136,12 +132,11 @@ func (s *Study) resetPerCardState() tea.Cmd {
 	return nil
 }
 
+// Layout budget for the per-card body. View reserves these rows and passes
+// the remainder to the inline vim editor.
 const (
-	// Rows study.View adds around the per-card body: deck header + blank.
-	studyChromeRows = 2
-	// "your answer:" label row above the editor.
-	studyRightLabel = 1
-	// Blank line + label between prompt and editor.
+	studyChromeRows   = 2
+	studyRightLabel   = 1
 	studyPromptChrome = 2
 )
 
@@ -161,8 +156,8 @@ func (s *Study) editorWidth() int {
 	return max(20, w)
 }
 
-// editorHeight returns a fallback used when the editor is created before the
-// prompt has been rendered. View computes the real value each frame.
+// editorHeight is a fallback used when the editor is created before View has
+// measured the prompt. View overrides it with the real height every frame.
 func (s *Study) editorHeight() int {
 	return max(5, s.bodyHeight()-studyRightLabel-studyPromptChrome-2)
 }
@@ -200,18 +195,7 @@ func (s *Study) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 		return s, pumpStream(s.streamCh)
 
 	case streamDoneMsg:
-		if m.full != "" {
-			s.grader = m.full
-		}
-		s.stage = stageAnswered
-		grade, ok := extractGrade(s.grader)
-		if !ok {
-			s.graderGrade = 0
-			s.graderErr = fmt.Errorf("grader did not return a FINAL_GRADE — use 1-5 to grade manually")
-			return s, nil
-		}
-		s.graderGrade = grade
-		return s, s.recordReview(grade)
+		return s, s.finishGrade(m)
 
 	case streamErrMsg:
 		s.graderErr = m.err
@@ -228,9 +212,23 @@ func (s *Study) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	return s, s.forwardToEmbedded(msg)
 }
 
-// forwardToEmbedded hands non-key Bubble Tea messages (cursor blinks, etc.)
-// to whichever inner widget is active for the current card type so its
-// animations stay alive.
+func (s *Study) finishGrade(m streamDoneMsg) tea.Cmd {
+	if m.full != "" {
+		s.grader = m.full
+	}
+	s.stage = stageAnswered
+	grade, ok := extractGrade(s.grader)
+	if !ok {
+		s.graderGrade = 0
+		s.graderErr = fmt.Errorf("grader did not return a FINAL_GRADE — use 1-5 to grade manually")
+		return nil
+	}
+	s.graderGrade = grade
+	return s.recordReview(grade)
+}
+
+// forwardToEmbedded routes non-key ticks (cursor blinks etc.) to the widget
+// active for the current card type so its animations stay alive.
 func (s *Study) forwardToEmbedded(msg tea.Msg) tea.Cmd {
 	if s.stage != stageQuestion {
 		return nil
@@ -258,15 +256,8 @@ func (s *Study) forwardToEmbedded(msg tea.Msg) tea.Cmd {
 func (s *Study) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	card := s.current()
 
-	// Code/exp cards in the question stage route keys to the inline vim
-	// editor. Esc from normal mode is the only study-level escape hatch.
-	if s.stage == stageQuestion && card != nil && s.codeEditor != nil &&
-		(card.Type == models.CardCode || card.Type == models.CardExp) {
-		if m.String() == "esc" && s.codeEditor.GetMode() == vimtea.ModeNormal {
-			return s, s.cancelAndExit()
-		}
-		_, cmd := s.codeEditor.Update(m)
-		return s, cmd
+	if s.inVimQuestion(card) {
+		return s.routeToVim(m)
 	}
 
 	if m.String() == "esc" {
@@ -298,6 +289,22 @@ func (s *Study) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	return s, nil
 }
 
+func (s *Study) inVimQuestion(card *models.Card) bool {
+	return s.stage == stageQuestion && card != nil && s.codeEditor != nil &&
+		(card.Type == models.CardCode || card.Type == models.CardExp)
+}
+
+// routeToVim forwards keys to the inline editor. Only esc-from-normal-mode
+// escapes the screen; every other key (including esc from insert/visual)
+// belongs to vim.
+func (s *Study) routeToVim(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
+	if m.String() == "esc" && s.codeEditor.GetMode() == vimtea.ModeNormal {
+		return s, s.cancelAndExit()
+	}
+	_, cmd := s.codeEditor.Update(m)
+	return s, cmd
+}
+
 func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (tui.Screen, tea.Cmd) {
 	switch card.Type {
 	case models.CardMCQ:
@@ -305,7 +312,6 @@ func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (tui.Screen, 
 	case models.CardFill:
 		return s.handleFillKey(m, card)
 	}
-	// Code/exp keys are consumed by the inline vim editor above.
 	return s, nil
 }
 
@@ -329,30 +335,37 @@ func (s *Study) cancelAndExit() tea.Cmd {
 	return s.endAndPop()
 }
 
-// recordReview persists a grade, computes the next SRS schedule, and bumps the
-// session counter. Out-of-range grades are a no-op so extractGrade's fallback
-// can't accidentally record a 0.
+// recordReview schedules the next SRS interval and persists it. Grades
+// outside 1..5 are rejected silently so extractGrade's fallback doesn't
+// accidentally record a 0.
 func (s *Study) recordReview(grade int) tea.Cmd {
 	card := s.current()
 	if card == nil || grade < 1 || grade > 5 {
 		return nil
 	}
-	prev, _ := s.store.LastReview(card.ID)
-	ease := 2.5
-	interval := 0
-	if prev != nil {
-		ease = prev.Ease
-		interval = prev.Interval
-	}
+	ease, interval := s.priorSchedule(card.ID)
 	r := srs.CalculateNext(grade, ease, interval)
 	if _, err := s.store.CreateReview(card.ID, grade, r.Ease, r.Interval, r.NextDue); err != nil {
 		return tui.ToastErr("review save failed: " + err.Error())
 	}
-	if s.session != nil {
-		cr := s.idx + 1
-		s.store.UpdateSession(s.session.ID, &cr, nil, false)
-	}
+	s.bumpSessionCounter()
 	return nil
+}
+
+func (s *Study) priorSchedule(cardID int64) (ease float64, interval int) {
+	ease, interval = 2.5, 0
+	if prev, _ := s.store.LastReview(cardID); prev != nil {
+		ease, interval = prev.Ease, prev.Interval
+	}
+	return
+}
+
+func (s *Study) bumpSessionCounter() {
+	if s.session == nil {
+		return
+	}
+	reviewed := s.idx + 1
+	s.store.UpdateSession(s.session.ID, &reviewed, nil, false)
 }
 
 func (s *Study) advance() tea.Cmd {
@@ -367,7 +380,7 @@ func (s *Study) advance() tea.Cmd {
 
 func (s *Study) endAndPop() tea.Cmd {
 	s.markSessionEnded()
-	return func() tea.Msg { return tui.NavMsg{Pop: true} }
+	return navBack
 }
 
 func (s *Study) markSessionEnded() {
@@ -390,28 +403,29 @@ func (s *Study) View() string {
 	if card == nil {
 		return s.viewDone()
 	}
+	return lipgloss.JoinVertical(lipgloss.Left, s.renderHeader(), "", s.renderBody(card))
+}
 
-	header := lipgloss.JoinHorizontal(lipgloss.Top,
+func (s *Study) renderHeader() string {
+	return lipgloss.JoinHorizontal(lipgloss.Top,
 		tui.StyleTitle.Render(s.deck.Name),
 		"   ",
 		tui.StyleMuted.Render(fmt.Sprintf("card %d / %d", s.idx+1, len(s.cards))),
 	)
+}
 
-	var body string
+func (s *Study) renderBody(card *models.Card) string {
 	switch card.Type {
 	case models.CardMCQ:
-		body = s.viewMCQ(card)
+		return s.viewMCQ(card)
 	case models.CardFill:
-		body = s.viewFill(card)
+		return s.viewFill(card)
 	case models.CardCode:
-		body = s.viewCode(card)
+		return s.viewCode(card)
 	case models.CardExp:
-		body = s.viewExp(card)
-	default:
-		body = tui.StyleMuted.Render("(unknown card type)")
+		return s.viewExp(card)
 	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, header, "", body)
+	return tui.StyleMuted.Render("(unknown card type)")
 }
 
 func (s *Study) viewDone() string {
@@ -431,21 +445,30 @@ func (s *Study) HelpKeys() []string {
 	}
 	switch s.stage {
 	case stageQuestion:
-		switch card.Type {
-		case models.CardMCQ:
-			return []string{"↑/↓ pick", "enter submit", "esc end"}
-		case models.CardFill:
-			return []string{"tab switch", "enter submit", "esc end"}
-		case models.CardCode, models.CardExp:
-			return []string{"i insert", "esc normal", "ctrl+s submit", "esc end (from normal)"}
-		}
+		return questionStageHelp(card.Type)
 	case stageGrading:
 		return []string{"ctrl+x cancel"}
 	case stageAnswered:
-		if card.Type == models.CardCode || card.Type == models.CardExp {
-			return []string{"1-5 override", "enter next", "esc end"}
-		}
-		return []string{"enter next", "esc end"}
+		return answeredStageHelp(card.Type)
 	}
 	return []string{"esc end"}
+}
+
+func questionStageHelp(t models.CardType) []string {
+	switch t {
+	case models.CardMCQ:
+		return []string{"↑/↓ pick", "enter submit", "esc end"}
+	case models.CardFill:
+		return []string{"tab switch", "enter submit", "esc end"}
+	case models.CardCode, models.CardExp:
+		return []string{"i insert", "esc normal", "ctrl+s submit", "esc end (from normal)"}
+	}
+	return []string{"esc end"}
+}
+
+func answeredStageHelp(t models.CardType) []string {
+	if t == models.CardCode || t == models.CardExp {
+		return []string{"1-5 override", "enter next", "esc end"}
+	}
+	return []string{"enter next", "esc end"}
 }

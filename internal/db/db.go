@@ -11,8 +11,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// migrate applies schema changes that can't be expressed with CREATE TABLE IF NOT EXISTS.
-// Add ALTER TABLE migrations here, guarded by column checks so they're idempotent.
+// migrate holds idempotent ALTER-style patches that sit outside the
+// declarative schema.sql. Each branch must check its precondition first.
 func migrate(conn *sql.DB) error {
 	has, err := hasColumn(conn, "cards", "initial_code")
 	if err != nil {
@@ -61,8 +61,8 @@ func hasColumn(conn *sql.DB, table, col string) (bool, error) {
 //go:embed schema.sql
 var schemaSQL string
 
-// Open connects to the gocards sqlite database, applying migrations + seeds.
-// If path is empty, defaults to ~/.gocards/gocards.db.
+// Open returns a ready-to-use SQLite handle with schema applied and seed
+// rows inserted. Empty path resolves to ~/.gocards/gocards.db.
 func Open(path string) (*sql.DB, error) {
 	if path == "" {
 		home, err := os.UserHomeDir()

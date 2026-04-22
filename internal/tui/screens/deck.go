@@ -51,74 +51,88 @@ func (d *DeckView) load() tea.Cmd {
 func (d *DeckView) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case deckLoadedMsg:
-		d.loaded = true
-		d.err = m.err
-		d.cards = m.cards
-		d.dueIDs = map[int64]bool{}
-		for _, c := range m.due {
-			d.dueIDs[c.ID] = true
-		}
-		if d.cursor >= len(d.cards) {
-			d.cursor = max(0, len(d.cards)-1)
-		}
+		d.applyLoaded(m)
 		return d, nil
-
 	case tea.KeyMsg:
-		if d.confirmDelete {
-			switch m.String() {
-			case "y", "Y":
-				if d.cursor < len(d.cards) {
-					id := d.cards[d.cursor].ID
-					if err := d.store.DeleteCard(id); err != nil {
-						d.confirmDelete = false
-						return d, tui.ToastErr("delete failed: " + err.Error())
-					}
-				}
-				d.confirmDelete = false
-				return d, tea.Batch(tui.Toast("card deleted"), d.load())
-			default:
-				d.confirmDelete = false
-				return d, nil
-			}
-		}
-
-		switch m.String() {
-		case "esc", "backspace":
-			return d, func() tea.Msg { return tui.NavMsg{Pop: true} }
-		case "q":
-			return d, tea.Quit
-		case "up", "k":
-			d.cursor = cursorUp(d.cursor)
-		case "down", "j":
-			d.cursor = cursorDown(d.cursor, len(d.cards))
-		case "s":
-			dueCount := 0
-			for _, c := range d.cards {
-				if d.dueIDs[c.ID] {
-					dueCount++
-				}
-			}
-			if dueCount == 0 {
-				return d, tui.ToastErr("nothing due right now")
-			}
-			return d, func() tea.Msg { return tui.NavMsg{To: NewStudy(d.store, d.deck)} }
-		case "n":
-			return d, func() tea.Msg { return tui.NavMsg{To: NewCreate(d.store, d.deck.ID)} }
-		case "enter", "e":
-			if d.cursor < len(d.cards) {
-				card := d.cards[d.cursor]
-				return d, func() tea.Msg { return tui.NavMsg{To: NewEdit(d.store, card)} }
-			}
-		case "d", "delete", "x":
-			if d.cursor < len(d.cards) {
-				d.confirmDelete = true
-			}
-		case "r":
-			d.loaded = false
-			return d, d.load()
-		}
+		return d.handleKey(m)
 	}
 	return d, nil
+}
+
+func (d *DeckView) applyLoaded(m deckLoadedMsg) {
+	d.loaded = true
+	d.err = m.err
+	d.cards = m.cards
+	d.dueIDs = map[int64]bool{}
+	for _, c := range m.due {
+		d.dueIDs[c.ID] = true
+	}
+	if d.cursor >= len(d.cards) {
+		d.cursor = max(0, len(d.cards)-1)
+	}
+}
+
+func (d *DeckView) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
+	if d.confirmDelete {
+		return d.handleDeleteConfirm(m)
+	}
+	switch m.String() {
+	case "esc", "backspace":
+		return d, navBack
+	case "q":
+		return d, tea.Quit
+	case "up", "k":
+		d.cursor = cursorUp(d.cursor)
+	case "down", "j":
+		d.cursor = cursorDown(d.cursor, len(d.cards))
+	case "s":
+		return d, d.startStudy()
+	case "n":
+		return d, navTo(NewCreate(d.store, d.deck.ID))
+	case "enter", "e":
+		if d.cursor < len(d.cards) {
+			return d, navTo(NewEdit(d.store, d.cards[d.cursor]))
+		}
+	case "d", "delete", "x":
+		if d.cursor < len(d.cards) {
+			d.confirmDelete = true
+		}
+	case "r":
+		d.loaded = false
+		return d, d.load()
+	}
+	return d, nil
+}
+
+func (d *DeckView) handleDeleteConfirm(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
+	d.confirmDelete = false
+	if m.String() != "y" && m.String() != "Y" {
+		return d, nil
+	}
+	if d.cursor >= len(d.cards) {
+		return d, nil
+	}
+	if err := d.store.DeleteCard(d.cards[d.cursor].ID); err != nil {
+		return d, tui.ToastErr("delete failed: " + err.Error())
+	}
+	return d, tea.Batch(tui.Toast("card deleted"), d.load())
+}
+
+func (d *DeckView) startStudy() tea.Cmd {
+	if d.dueCount() == 0 {
+		return tui.ToastErr("nothing due right now")
+	}
+	return navTo(NewStudy(d.store, d.deck))
+}
+
+func (d *DeckView) dueCount() int {
+	n := 0
+	for _, c := range d.cards {
+		if d.dueIDs[c.ID] {
+			n++
+		}
+	}
+	return n
 }
 
 func (d *DeckView) View() string {
@@ -129,60 +143,51 @@ func (d *DeckView) View() string {
 		return tui.StyleDanger.Render("error: " + d.err.Error())
 	}
 
-	color := colorBullet(d.deck.Color)
-
-	dueCount := 0
-	for _, c := range d.cards {
-		if d.dueIDs[c.ID] {
-			dueCount++
-		}
+	body := lipgloss.JoinVertical(lipgloss.Left, d.renderHeader(), "", d.renderCards())
+	if d.confirmDelete && d.cursor < len(d.cards) {
+		prompt := tui.StyleDanger.Render(fmt.Sprintf("delete card %d? y/N", d.cards[d.cursor].ID))
+		return lipgloss.JoinVertical(lipgloss.Left, body, "", prompt)
 	}
-	header := lipgloss.JoinVertical(lipgloss.Left,
-		fmt.Sprintf("%s  %s", color, tui.StyleTitle.Render(d.deck.Name)),
+	return body
+}
+
+func (d *DeckView) renderHeader() string {
+	return lipgloss.JoinVertical(lipgloss.Left,
+		fmt.Sprintf("%s  %s", colorBullet(d.deck.Color), tui.StyleTitle.Render(d.deck.Name)),
 		tui.StyleMuted.Render(d.deck.Description),
 		tui.StyleMuted.Render(fmt.Sprintf("%s  ·  %s due",
 			pluralize(len(d.cards), "card", "cards"),
-			tui.StylePrimary.Render(fmt.Sprintf("%d", dueCount)),
+			tui.StylePrimary.Render(fmt.Sprintf("%d", d.dueCount())),
 		)),
 	)
+}
 
-	// card list
-	rows := []string{}
+func (d *DeckView) renderCards() string {
 	if len(d.cards) == 0 {
-		rows = append(rows, tui.StyleMuted.Render("no cards yet — press 'n' to add some"))
+		return tui.StyleMuted.Render("no cards yet — press 'n' to add some")
 	}
+	rows := make([]string, len(d.cards))
 	for i, c := range d.cards {
-		sel := i == d.cursor
-		style := lipgloss.NewStyle().Foreground(tui.ColorFg)
-		if sel {
-			style = tui.StyleSelected
-		}
-		due := "  "
-		if d.dueIDs[c.ID] {
-			due = tui.StylePrimary.Render("● ")
-		}
-		rows = append(rows, fmt.Sprintf("%s%s%s  %s  %s",
-			selectionPrefix(sel),
-			due,
-			cardTypeBadge(c.Type),
-			tui.StyleMuted.Render(fmt.Sprintf("(%s)", c.Language)),
-			style.Render(truncate(flat(c.Prompt), 80)),
-		))
+		rows[i] = d.renderCardRow(c, i == d.cursor)
 	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
 
-	if d.confirmDelete && d.cursor < len(d.cards) {
-		return lipgloss.JoinVertical(lipgloss.Left,
-			header,
-			"",
-			lipgloss.JoinVertical(lipgloss.Left, rows...),
-			"",
-			tui.StyleDanger.Render(fmt.Sprintf("delete card %d? y/N", d.cards[d.cursor].ID)),
-		)
+func (d *DeckView) renderCardRow(c models.Card, selected bool) string {
+	style := lipgloss.NewStyle().Foreground(tui.ColorFg)
+	if selected {
+		style = tui.StyleSelected
 	}
-	return lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		"",
-		lipgloss.JoinVertical(lipgloss.Left, rows...),
+	dueMark := "  "
+	if d.dueIDs[c.ID] {
+		dueMark = tui.StylePrimary.Render("● ")
+	}
+	return fmt.Sprintf("%s%s%s  %s  %s",
+		selectionPrefix(selected),
+		dueMark,
+		cardTypeBadge(c.Type),
+		tui.StyleMuted.Render(fmt.Sprintf("(%s)", c.Language)),
+		style.Render(truncate(flat(c.Prompt), 80)),
 	)
 }
 
@@ -193,6 +198,7 @@ func (d *DeckView) HelpKeys() []string {
 	return []string{"↑/↓ move", "enter edit", "s study", "n new", "d delete", "r reload", "esc back"}
 }
 
+// flat replaces newlines/CRs with spaces so a card prompt fits on one line.
 func flat(s string) string {
 	out := make([]rune, 0, len(s))
 	for _, r := range s {

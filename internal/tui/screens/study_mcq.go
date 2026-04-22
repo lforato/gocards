@@ -49,9 +49,6 @@ func (s *Study) viewMCQ(card *models.Card) string {
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
-// mcqChoiceRow renders one choice row — prefix + (id. text) with state-aware
-// coloring. Broken out from viewMCQ so the per-row branching doesn't hide the
-// overall layout.
 func mcqChoiceRow(ch models.Choice, idx, cursor int, stage studyStage) string {
 	selected := idx == cursor
 	prefix := "  "

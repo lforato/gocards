@@ -3,15 +3,18 @@ package screens
 import (
 	"fmt"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/tui"
 )
 
-// cursorUp / cursorDown / cycleFocus centralize the bounds math every list-y
-// screen was duplicating. count is the number of items (>= 0); cursor is
-// clamped into [0, count-1] on every call.
+func navTo(s tui.Screen) tea.Cmd {
+	return func() tea.Msg { return tui.NavMsg{To: s} }
+}
+
+func navBack() tea.Msg { return tui.NavMsg{Pop: true} }
 
 func cursorUp(cursor int) int {
 	if cursor <= 0 {
@@ -30,7 +33,7 @@ func cursorDown(cursor, count int) int {
 	return cursor + 1
 }
 
-// cycleFocus advances a ring-buffer cursor by delta, wrapping at both ends.
+// cycleFocus wraps at both ends, used by tab/shift-tab focus cycling.
 func cycleFocus(focus, delta, count int) int {
 	if count <= 0 {
 		return 0
@@ -38,7 +41,6 @@ func cycleFocus(focus, delta, count int) int {
 	return (focus + delta%count + count) % count
 }
 
-// selectionPrefix is the leading gutter used by every selectable list row.
 func selectionPrefix(selected bool) string {
 	if selected {
 		return tui.StylePrimary.Render("▶ ")
@@ -68,7 +70,6 @@ func cardTypeBadge(t models.CardType) string {
 	return lipgloss.NewStyle().Foreground(cardTypeColor(t)).Render(fmt.Sprintf("[%s]", t))
 }
 
-// truncate clips s to at most n runes, appending … when truncation happens.
 func truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
@@ -80,7 +81,6 @@ func truncate(s string, n int) string {
 	return string(r[:n-1]) + "…"
 }
 
-// pluralize returns "N singular" when N == 1 and "N plural" otherwise.
 func pluralize(n int, singular, plural string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, singular)

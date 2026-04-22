@@ -126,7 +126,7 @@ func (c *Create) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 
 func (c *Create) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	if m.String() == "esc" {
-		return c, func() tea.Msg { return tui.NavMsg{Pop: true} }
+		return c, navBack
 	}
 
 	switch c.step {
@@ -202,7 +202,7 @@ func (c *Create) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 				Type:     t,
 				Language: "javascript",
 			}
-			return c, func() tea.Msg { return tui.NavMsg{To: NewEdit(c.store, draft)} }
+			return c, navTo(NewEdit(c.store, draft))
 		}
 	}
 	return c, nil

@@ -10,22 +10,18 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
-// Model is the single Anthropic model the app uses for every call (generation,
-// chat, grading). Haiku is chosen for low latency streaming in the TUI —
-// switch to Sonnet for richer code understanding at higher cost/latency.
+// Haiku streams fast enough for TUI latency; swap for Sonnet if code
+// understanding matters more than per-token cost.
 const Model = anthropic.ModelClaudeHaiku4_5_20251001
 
-// Token budgets. Kept narrow so responses render in a terminal viewport
-// without scrolling forever and so a runaway model can't consume free credits.
 const (
-	maxTokensGenerate int64 = 2000 // 3-5 cards per one-shot generation
-	maxTokensChat     int64 = 4000 // conversational turns + card proposals
-	maxTokensGrade    int64 = 500  // brief verdict + FINAL_GRADE line
+	maxTokensGenerate int64 = 2000
+	maxTokensChat     int64 = 4000
+	maxTokensGrade    int64 = 500
 )
 
-// Event is one piece of a stream. A normal stream produces many {Chunk: text}
-// events, then exactly one terminal event (either {Err: ...} or {Done: true,
-// Full: <accumulated>}).
+// Event carries one delta from a streaming call. Streams emit many
+// {Chunk: ...} events, then exactly one terminal {Err} or {Done, Full}.
 type Event struct {
 	Chunk string
 	Err   error
@@ -33,9 +29,8 @@ type Event struct {
 	Full  string
 }
 
-// ResolveAPIKey returns the first key it finds, in order: ANTHROPIC_API_KEY
-// env var, then the DB-backed settings getter. Empty string means "no key
-// configured"; callers should surface a hint rather than sending the request.
+// ResolveAPIKey checks ANTHROPIC_API_KEY first, then falls back to the
+// DB-backed settings getter. Empty return means no key is configured.
 func ResolveAPIKey(settingKey func() (string, bool, error)) string {
 	if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
 		return k
@@ -48,7 +43,6 @@ func ResolveAPIKey(settingKey func() (string, bool, error)) string {
 	return ""
 }
 
-// Client is a thin wrapper around the Anthropic SDK.
 type Client struct {
 	inner anthropic.Client
 }
@@ -57,9 +51,6 @@ func New(apiKey string) *Client {
 	return &Client{inner: anthropic.NewClient(option.WithAPIKey(apiKey))}
 }
 
-// stream runs a single streaming Messages.Create request in its own goroutine
-// and fans deltas onto a buffered channel. The goroutine always terminates
-// (panic recovery + ctx check) and always closes the channel.
 func (c *Client) stream(ctx context.Context, system string, messages []anthropic.MessageParam, maxTokens int64) <-chan Event {
 	ch := make(chan Event, 16)
 

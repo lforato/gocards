@@ -36,18 +36,15 @@ type Edit struct {
 
 	language textinput.Model
 
-	// inline code editor modal (used for prompt/initial code/expected/template)
 	editor       widgets.CodeEditor
 	editorActive bool
 	editingField editField
 
-	// MCQ choice sub-state
 	choiceCursor  int
 	choiceEditing bool
 	choiceInput   textinput.Model
 	choiceEditIdx int
 
-	// screen dimensions (from WindowSizeMsg) used to size the inline editor
 	w, h int
 }
 
@@ -82,7 +79,6 @@ func NewEdit(s *store.Store, card models.Card) *Edit {
 
 func (e *Edit) Init() tea.Cmd { return textinput.Blink }
 
-// visibleFields returns the field list for the current card type.
 func (e *Edit) visibleFields() []editField {
 	switch e.card.Type {
 	case models.CardMCQ:
@@ -182,10 +178,8 @@ func (e *Edit) openEditor(field editField, content, lang, title string) tea.Cmd 
 	return e.editor.Init()
 }
 
-// editorWidth / editorHeight return the dimensions passed into
-// widgets.NewCodeEditor / SetSize. widgets.CodeEditor's outer rendered size is (width+2) ×
-// height because Border adds 1 cell on each horizontal side, so we subtract
-// 2 from the available screen width to keep the box from overflowing.
+// CodeEditor's border adds 1 cell on each side, so subtract 2 from the
+// available width to keep it from overflowing.
 func (e *Edit) editorWidth() int {
 	if e.w <= 0 {
 		return 80
@@ -203,12 +197,11 @@ func (e *Edit) editorHeight() int {
 func (e *Edit) updateKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	switch m.String() {
 	case "esc":
-		return e, func() tea.Msg { return tui.NavMsg{Pop: true} }
+		return e, navBack
 	case "ctrl+s":
 		return e, e.save()
 	}
 
-	// Choices-focused navigation overrides tab/arrow defaults
 	if e.focus == fChoices {
 		return e.updateChoicesKey(m)
 	}
@@ -410,13 +403,13 @@ func (e *Edit) save() tea.Cmd {
 		if len(cs) > 0 {
 			e.card = cs[0]
 		}
-		return tea.Batch(tui.Toast("card created"), func() tea.Msg { return tui.NavMsg{Pop: true} })
+		return tea.Batch(tui.Toast("card created"), navBack)
 	}
 
 	if _, err := e.store.UpdateCard(e.card.ID, in); err != nil {
 		return tui.ToastErr("update failed: " + err.Error())
 	}
-	return tea.Batch(tui.Toast("card saved"), func() tea.Msg { return tui.NavMsg{Pop: true} })
+	return tea.Batch(tui.Toast("card saved"), navBack)
 }
 
 func (e *Edit) View() string {
@@ -445,7 +438,6 @@ func (e *Edit) View() string {
 	rows = append(rows, tui.StyleTitle.Render(title), "")
 
 	if e.card.Type == models.CardCode {
-		// Type is a muted header (not a focusable field) for code cards.
 		rows = append(rows,
 			tui.StyleMuted.Render("Type"),
 			"  "+typeLine,

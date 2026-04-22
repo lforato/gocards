@@ -10,9 +10,8 @@ import (
 	"github.com/lforato/gocards/internal/models"
 )
 
-// CardInput is the author-facing shape used by BulkCreateCards and UpdateCard.
-// It mirrors models.Card minus the server-managed fields (ID, DeckID,
-// CreatedAt) so callers can't accidentally set them.
+// CardInput mirrors models.Card minus the server-managed fields so callers
+// can't accidentally set ID/DeckID/CreatedAt.
 type CardInput struct {
 	Type           models.CardType
 	Language       string
@@ -102,9 +101,8 @@ func (s *Store) CountCards(deckID int64) (int, error) {
 	return n, err
 }
 
-// DueCards returns cards in the deck whose most recent review's next_due is
-// on or before now — i.e. cards the user is eligible to review right now.
-// Cards that have never been reviewed count as due. Capped by limit.
+// DueCards returns cards whose next_due has elapsed. Unreviewed cards count
+// as due. Capped at limit rows.
 func (s *Store) DueCards(deckID int64, limit int) ([]models.Card, error) {
 	q := `
         SELECT ` + cardCols + ` FROM cards c

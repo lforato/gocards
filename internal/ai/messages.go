@@ -6,9 +6,6 @@ import (
 	"github.com/lforato/gocards/internal/models"
 )
 
-// toAnthropic converts a gocards GradingMessage history into the SDK's param
-// shape. User and assistant turns are tagged accordingly; anything that isn't
-// "assistant" is treated as a user turn.
 func toAnthropic(history []models.GradingMessage) []anthropic.MessageParam {
 	out := make([]anthropic.MessageParam, 0, len(history))
 	for _, m := range history {

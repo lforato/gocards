@@ -9,9 +9,8 @@ import (
 
 const DefaultDailyLimit = 50
 
-// GetSetting returns the normalized-to-string value for key. ok indicates
-// whether the row existed; if not, the string is empty and err is nil. Values
-// stored as JSON numbers are formatted without surrounding quotes.
+// GetSetting normalizes JSON-encoded strings or numbers into a plain string.
+// ok=false means the row is missing (nil error).
 func (s *Store) GetSetting(key string) (string, bool, error) {
 	var raw string
 	err := s.db.QueryRow(`SELECT value FROM settings WHERE key = ?`, key).Scan(&raw)
@@ -49,8 +48,6 @@ func (s *Store) SetSetting(key string, value any) error {
 	return err
 }
 
-// DailyLimit returns the configured daily review cap, falling back to
-// DefaultDailyLimit when missing or invalid.
 func (s *Store) DailyLimit() int {
 	v, ok, _ := s.GetSetting("dailyLimit")
 	if !ok {

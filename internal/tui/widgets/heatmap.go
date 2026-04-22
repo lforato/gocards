@@ -9,9 +9,8 @@ import (
 	"github.com/lforato/gocards/internal/tui"
 )
 
-// Heatmap renders a GitHub-style activity grid: 7 rows (weekdays) × N columns
-// (weeks), where N is as many weeks as fit in width display cells. Each cell
-// is 2 display cells wide ("■ "). The rightmost column contains today.
+// Heatmap is a GitHub-style activity grid — 7 rows × ceil(width/2) columns,
+// rightmost column ending today. Cells are 2 display cells wide.
 func Heatmap(activity map[string]int, width int) string {
 	weeks := width / 2
 	if weeks <= 0 {

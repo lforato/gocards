@@ -10,9 +10,8 @@ import (
 	"github.com/lforato/gocards/internal/tui"
 )
 
-// CodeEditor embeds a vimtea.Editor as a modal widget inside a parent
-// tea.Model. Pressing <esc> in normal mode dispatches a vimtea.QuitMsg that
-// this wrapper intercepts to set Done()/Value() for the parent.
+// CodeEditor is a modal vim-backed text editor. Parents watch Done() to
+// detect when the user pressed esc in normal mode, then read Value().
 type CodeEditor struct {
 	editor vimtea.Editor
 	title  string
@@ -59,9 +58,8 @@ func (e CodeEditor) Init() tea.Cmd { return e.editor.Init() }
 func (e CodeEditor) Done() bool    { return e.done }
 func (e CodeEditor) Value() string { return e.value }
 
-// SetSize re-fits the editor chrome and the underlying vimtea viewport.
-// Returns the updated value so callers holding CodeEditor by value can
-// reassign.
+// SetSize returns a resized copy so callers holding CodeEditor by value can
+// reassign: `e = e.SetSize(w, h)`.
 func (e CodeEditor) SetSize(width, height int) CodeEditor {
 	if width < 20 {
 		width = 80
@@ -114,8 +112,7 @@ func (e CodeEditor) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, titleBar, box)
 }
 
-// langExtByName maps language identifiers to filename extensions so vimtea's
-// chroma-based highlighter can pick the right lexer.
+// vimtea's chroma highlighter picks lexers by filename extension.
 var langExtByName = map[string]string{
 	"javascript": ".js", "js": ".js",
 	"typescript": ".ts", "ts": ".ts",
@@ -137,8 +134,6 @@ var langExtByName = map[string]string{
 	"md":   ".md", "markdown": ".md",
 }
 
-// LangExt returns the filename extension for a source language, defaulting to
-// .txt for unknown values.
 func LangExt(lang string) string {
 	if ext, ok := langExtByName[strings.ToLower(lang)]; ok {
 		return ext

@@ -15,13 +15,9 @@ import (
 	"github.com/lforato/gocards/internal/tui/widgets"
 )
 
-// gradeTimeout bounds how long we wait for the grader to finish streaming.
-// If the model hangs, the ctx fires and the user sees the timeout error
-// rather than watching the spinner forever.
+// gradeTimeout caps how long we wait for the grader before the ctx fires.
 const gradeTimeout = 60 * time.Second
 
-// codeSubmitMsg is emitted by the inline vimtea editor's ctrl+s binding and
-// carries the user's final answer so the Study screen can start grading.
 type codeSubmitMsg struct{ content string }
 
 func (s *Study) initCodeEditor(card *models.Card) tea.Cmd {
@@ -66,9 +62,6 @@ func (s *Study) handleCodeSubmit(m codeSubmitMsg) (tui.Screen, tea.Cmd) {
 	return s, s.startGrading()
 }
 
-// startGrading kicks off an AI grading stream for the current code/exp card.
-// If no API key is configured, the card falls back to manual 1-5 grading and
-// a hint is surfaced in the grader error panel.
 func (s *Study) startGrading() tea.Cmd {
 	card := s.current()
 	if card == nil {
@@ -127,8 +120,6 @@ func (s *Study) viewCodeOrExp(card *models.Card, answer, label string) string {
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
-// viewCodeQuestion renders the question-stage layout: prompt on top,
-// full-width vim editor below, help line at the bottom.
 func (s *Study) viewCodeQuestion(card *models.Card, editorLabel string) string {
 	totalW := s.editorWidth()
 	bodyH := s.bodyHeight()
@@ -151,8 +142,6 @@ func (s *Study) viewCodeQuestion(card *models.Card, editorLabel string) string {
 	)
 }
 
-// viewGrading returns the rows shown below a code/exp prompt while the grader
-// streams, and after the grader finishes. Shared between CardCode and CardExp.
 func (s *Study) viewGrading() []string {
 	switch s.stage {
 	case stageGrading:

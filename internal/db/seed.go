@@ -6,7 +6,16 @@ import (
 )
 
 func ensureSeed(conn *sql.DB) error {
-	// Default settings (idempotent).
+	if err := seedDefaultSettings(conn); err != nil {
+		return err
+	}
+	if seeded, err := decksExist(conn); err != nil || seeded {
+		return err
+	}
+	return seedSampleCards(conn)
+}
+
+func seedDefaultSettings(conn *sql.DB) error {
 	defaults := map[string]any{
 		"dailyLimit":         50,
 		"preferredLanguages": "javascript,typescript,python",
@@ -14,25 +23,25 @@ func ensureSeed(conn *sql.DB) error {
 	}
 	for k, v := range defaults {
 		raw, _ := json.Marshal(v)
-		_, err := conn.Exec(
+		if _, err := conn.Exec(
 			`INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO NOTHING`,
 			k, string(raw),
-		)
-		if err != nil {
+		); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	// Skip if we already have decks.
+func decksExist(conn *sql.DB) (bool, error) {
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM decks`).Scan(&count); err != nil {
-		return err
+		return false, err
 	}
-	if count > 0 {
-		return nil
-	}
+	return count > 0, nil
+}
 
-	// Sample data mirrors server/src/db/seed.ts.
+func seedSampleCards(conn *sql.DB) error {
 	jsID, err := insertDeck(conn, "JavaScript Fundamentals", "Core JS concepts every dev should know", "#f59e0b")
 	if err != nil {
 		return err

@@ -6,10 +6,8 @@ import (
 	"github.com/lforato/gocards/internal/models"
 )
 
-// Chat runs a conversational card-authoring session with Claude. The caller
-// owns the history and appends both the user's latest message and the model's
-// reply after each turn. Claude emits cards inline as <card>...</card> JSON
-// blocks; the TUI extractor parses them out of the final reply.
+// Chat drives a conversational authoring session. Claude emits proposed
+// cards inline as <card>...</card> JSON blocks for the caller to extract.
 func (c *Client) Chat(ctx context.Context, deckName, deckDescription string, history []models.GradingMessage) <-chan Event {
 	return c.stream(ctx, chatSystem(deckName, deckDescription), toAnthropic(history), maxTokensChat)
 }

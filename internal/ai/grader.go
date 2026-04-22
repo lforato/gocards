@@ -9,8 +9,6 @@ import (
 	"github.com/lforato/gocards/internal/models"
 )
 
-// GradeInput bundles everything the grader needs to score a student's answer
-// for a code or exp card. Mode selects the grading rubric.
 type GradeInput struct {
 	Prompt         string
 	ExpectedAnswer string
@@ -19,13 +17,8 @@ type GradeInput struct {
 	Mode           string // "code" | "explanation"
 }
 
-// Grade streams the grader's verdict. The final message always ends with:
-//
-//	FINAL_GRADE: N
-//	VERDICT: <label>
-//
-// The caller extracts N to persist a review. Missing FINAL_GRADE means the
-// grader didn't commit — the TUI falls back to manual grading.
+// Grade streams a verdict whose last line is `FINAL_GRADE: N`. A missing
+// FINAL_GRADE means the grader didn't commit — callers fall back to manual.
 func (c *Client) Grade(ctx context.Context, in GradeInput) <-chan Event {
 	messages := toAnthropic(in.History)
 	if len(in.History) == 0 {

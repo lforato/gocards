@@ -10,33 +10,36 @@ import (
 	"github.com/lforato/gocards/internal/tui"
 )
 
-// renderPrompt formats a card prompt for display: plain text stays plain,
-// fenced ```code``` blocks render inside a bordered codeBox.
+// renderPrompt renders plain text as-is and fenced code blocks inside a
+// codeBox. Unclosed fences are rendered as a final code block.
 func renderPrompt(p string) string {
-	lines := strings.Split(p, "\n")
 	var out []string
-	var inCode bool
-	var buf []string
-	for _, ln := range lines {
+	var codeBuf []string
+	inCode := false
+
+	flush := func() {
+		if len(codeBuf) == 0 {
+			return
+		}
+		out = append(out, codeBox(strings.Join(codeBuf, "\n")))
+		codeBuf = nil
+	}
+
+	for _, ln := range strings.Split(p, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(ln), "```") {
 			if inCode {
-				out = append(out, codeBox(strings.Join(buf, "\n")))
-				buf = nil
-				inCode = false
-			} else {
-				inCode = true
+				flush()
 			}
+			inCode = !inCode
 			continue
 		}
 		if inCode {
-			buf = append(buf, ln)
-			continue
+			codeBuf = append(codeBuf, ln)
+		} else {
+			out = append(out, ln)
 		}
-		out = append(out, ln)
 	}
-	if len(buf) > 0 {
-		out = append(out, codeBox(strings.Join(buf, "\n")))
-	}
+	flush()
 	return strings.Join(out, "\n")
 }
 
@@ -49,13 +52,12 @@ func codeBox(s string) string {
 		Render(s)
 }
 
-// extractCodeBlock returns the content of the first fenced code block in
-// prompt (without the fences). Used by CardExp to preload the vim editor.
+// extractCodeBlock returns the body of the first fenced block in prompt,
+// used by CardExp to preload the vim editor.
 func extractCodeBlock(prompt string) string {
-	lines := strings.Split(prompt, "\n")
 	var buf []string
 	in := false
-	for _, ln := range lines {
+	for _, ln := range strings.Split(prompt, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(ln), "```") {
 			if in {
 				return strings.Join(buf, "\n")
@@ -72,9 +74,8 @@ func extractCodeBlock(prompt string) string {
 
 var gradeRegex = regexp.MustCompile(`FINAL_GRADE:\s*([1-5])`)
 
-// extractGrade parses the FINAL_GRADE: N line Claude emits at the end of a
-// grade stream. Returns (0, false) when no such line is present so the caller
-// can surface the missing-grade case instead of silently persisting a 0.
+// extractGrade parses Claude's FINAL_GRADE: N footer. (0, false) means the
+// grader didn't commit — the UI surfaces that instead of recording a 0.
 func extractGrade(text string) (int, bool) {
 	m := gradeRegex.FindStringSubmatch(text)
 	if len(m) < 2 {

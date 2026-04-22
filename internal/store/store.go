@@ -8,9 +8,7 @@ import (
 	"time"
 )
 
-// ErrNotFound is returned by single-row lookups (GetDeck, GetCard, etc.) when
-// the row doesn't exist. Callers can use errors.Is to distinguish from
-// transport-level failures.
+// ErrNotFound distinguishes missing rows from transport-level failures.
 var ErrNotFound = errors.New("not found")
 
 type Store struct {
@@ -26,8 +24,8 @@ const (
 	tsLayoutAlt = "2006-01-02T15:04:05Z"
 )
 
-// parseTime accepts the ISO-8601 variants the JS web app writes plus Go's
-// canonical RFC3339. Returns zero time on empty input or unrecognized format.
+// parseTime accepts both the JS web app's ISO-8601 variants and Go's RFC3339.
+// Returns zero time on unrecognized formats.
 func parseTime(s string) time.Time {
 	if s == "" {
 		return time.Time{}
@@ -44,15 +42,13 @@ func formatTime(t time.Time) string {
 	return t.UTC().Format(tsLayout)
 }
 
-// startOfLocalDay returns midnight of t in the local timezone.
 func startOfLocalDay(t time.Time) time.Time {
 	local := t.Local()
 	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location())
 }
 
-// patch accumulates conditional UPDATE column assignments so update methods
-// don't rebuild the `SET col = ?, col = ?, …` string by hand. Only columns
-// whose values were actually provided end up in the final statement.
+// patch builds a conditional UPDATE … SET clause, emitting only the columns
+// whose values were actually supplied.
 type patch struct {
 	sets []string
 	args []any
@@ -69,8 +65,8 @@ func (p *patch) setRaw(col, literal string) {
 	p.sets = append(p.sets, col+" = "+literal)
 }
 
-// setIfPtr appends col = *v only when v is non-nil, centralizing the nil-check
-// every optional-update caller was duplicating.
+// setIfPtr is the pointer-aware variant for optional-update callers. Nil
+// values are skipped; typed dereferences avoid reflection cost.
 func (p *patch) setIfPtr(col string, v any) {
 	switch val := v.(type) {
 	case *string:

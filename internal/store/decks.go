@@ -12,8 +12,8 @@ import (
 
 var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
-// ErrInvalidDeck is returned by CreateDeck when the caller supplies an empty
-// name or a color that isn't #rrggbb. Callers surface the error as a toast.
+// ErrInvalidDeck wraps validation failures in CreateDeck. Callers surface
+// the message as a user-facing toast.
 var ErrInvalidDeck = errors.New("invalid deck")
 
 func validateDeckFields(name, color string) error {

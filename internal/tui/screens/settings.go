@@ -57,7 +57,7 @@ func (s *Settings) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	case tea.KeyMsg:
 		switch m.String() {
 		case "esc":
-			return s, func() tea.Msg { return tui.NavMsg{Pop: true} }
+			return s, navBack
 		case "tab", "down":
 			s.fields[s.focus].Blur()
 			s.focus = cycleFocus(s.focus, 1, len(s.fields))

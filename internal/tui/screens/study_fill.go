@@ -59,9 +59,8 @@ func (s *Study) focusFillInput(next int) {
 	s.fillInputs[s.fillFocus].Focus()
 }
 
-// submitFill grades the student's filled blanks against the card's canonical
-// values. Matching is case-insensitive and trims surrounding whitespace so
-// minor typographical differences don't mark a correct answer wrong.
+// submitFill is case-insensitive and trims whitespace so casing/spacing
+// typos don't fail an otherwise-correct answer.
 func (s *Study) submitFill(card *models.Card) (tui.Screen, tea.Cmd) {
 	if card.BlanksData == nil || len(card.BlanksData.Blanks) != len(s.fillInputs) {
 		return s, tui.ToastErr("fill card is malformed — skipping")
@@ -81,8 +80,6 @@ func (s *Study) submitFill(card *models.Card) (tui.Screen, tea.Cmd) {
 	return s, s.recordReview(grade)
 }
 
-// gradeFillFromPartial maps the correct-blank count to the 1-5 SRS scale:
-// all correct → 5, some correct → 3, none correct → 1.
 func gradeFillFromPartial(correct, total int) int {
 	switch {
 	case correct == total && total > 0:
@@ -93,9 +90,7 @@ func gradeFillFromPartial(correct, total int) int {
 	return 1
 }
 
-// renderFillTemplate replaces every {{blank}} placeholder with an underscore
-// run the same visual width as the blank's name so the template reads like
-// "use ____ to declare a constant" at study time.
+// renderFillTemplate replaces {{name}} with underscores of matching width.
 func renderFillTemplate(s string) string {
 	return blankRe.ReplaceAllStringFunc(s, func(match string) string {
 		inner := match[2 : len(match)-2]

@@ -9,10 +9,8 @@ import (
 	"github.com/lforato/gocards/internal/models"
 )
 
-// Generate starts a one-shot flashcard generation stream. When history is
-// empty we seed with the topic as the first user message; when it's non-empty
-// we replay the prior turns (so the caller can keep asking for more/different
-// cards with continued context).
+// Generate replays history if present, else seeds the stream with topic as
+// the first user turn.
 func (c *Client) Generate(ctx context.Context, topic string, history []models.GradingMessage, preferredLanguages string) <-chan Event {
 	system := generateSystem(preferredLanguages)
 	messages := toAnthropic(history)
