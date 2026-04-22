@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -63,6 +64,24 @@ func (c *Client) Generate(ctx context.Context, topic string, history []models.Gr
 	return c.stream(ctx, system, messages, 2000)
 }
 
+// Chat runs a conversational flashcard-authoring session with Claude.
+// history is the full back-and-forth so far, ending with the user's newest
+// message. The deck's name + description are passed to the system prompt so
+// the model knows what context it's generating for.
+//
+// Claude is instructed to converse normally in markdown and, when ready, emit
+// one or more cards wrapped in <card>...</card> JSON blocks. The caller
+// (tui.AIGenerate) parses those out of the final text to populate a review
+// queue.
+func (c *Client) Chat(ctx context.Context, deckName, deckDescription string, history []models.GradingMessage) <-chan Event {
+	system := chatSystem(deckName, deckDescription)
+	var messages []anthropic.MessageParam
+	for _, m := range history {
+		messages = append(messages, msgParam(m))
+	}
+	return c.stream(ctx, system, messages, 4000)
+}
+
 type GradeInput struct {
 	Prompt         string
 	ExpectedAnswer string
@@ -104,6 +123,14 @@ func (c *Client) stream(ctx context.Context, system string, messages []anthropic
 
 	go func() {
 		defer close(ch)
+		defer func() {
+			if r := recover(); r != nil {
+				select {
+				case ch <- Event{Err: fmt.Errorf("stream panic: %v", r)}:
+				default:
+				}
+			}
+		}()
 
 		stream := c.inner.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 			Model:     Model,
@@ -112,13 +139,12 @@ func (c *Client) stream(ctx context.Context, system string, messages []anthropic
 			Messages:  messages,
 		})
 
-		var full string
+		var full strings.Builder
 		for stream.Next() {
 			event := stream.Current()
-			switch ev := event.AsAny().(type) {
-			case anthropic.ContentBlockDeltaEvent:
+			if ev, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
 				if td, ok := ev.Delta.AsAny().(anthropic.TextDelta); ok && td.Text != "" {
-					full += td.Text
+					full.WriteString(td.Text)
 					select {
 					case ch <- Event{Chunk: td.Text}:
 					case <-ctx.Done():
@@ -131,10 +157,51 @@ func (c *Client) stream(ctx context.Context, system string, messages []anthropic
 			ch <- Event{Err: err}
 			return
 		}
-		ch <- Event{Done: true, Full: full}
+		ch <- Event{Done: true, Full: full.String()}
 	}()
 
 	return ch
+}
+
+func chatSystem(deckName, deckDescription string) string {
+	desc := deckDescription
+	if strings.TrimSpace(desc) == "" {
+		desc = "(no description)"
+	}
+	return fmt.Sprintf(`You are a programming tutor collaborating with a developer to build flashcards for spaced-repetition study.
+
+You are adding cards to the deck "%s" — %s.
+
+Conversation style:
+- Keep your replies SHORT (≤3 short paragraphs or ≤6 bullet points of markdown). Don't lecture.
+- Ask clarifying questions only when the user's request is genuinely ambiguous. Otherwise just start generating cards.
+- When the user confirms or gives you a concrete topic, draft cards right away.
+
+Emitting cards:
+- When you are ready to propose cards, include one <card>...</card> JSON block PER card inline in your reply.
+- The JSON inside each <card> tag must match this schema exactly:
+  {
+    "type": "mcq" | "code" | "fill" | "exp",
+    "language": "javascript",
+    "prompt": "...",
+    "expected_answer": "...",
+    "choices": [{"id":"a","text":"...","isCorrect":false}, ...],   // MCQ only
+    "blanks_data": {"template": "... ___BLANK___ ...", "blanks": ["value"]}  // fill only
+  }
+- Use real newlines inside the JSON (not \n escapes) — our parser reads the raw block.
+- You may write a short intro sentence before the cards and a brief outro afterwards, but do NOT put code fences around the <card> tags.
+- Don't repeat cards you've already proposed in earlier turns.
+- Mix card types when it makes pedagogical sense.
+
+Card-type semantics (same as the standalone generator):
+- "mcq": 3-4 "choices" with exactly one isCorrect=true.
+- "code": student writes code from scratch. expected_answer is a clean reference solution.
+- "fill": student edits a template in place. blanks_data.template uses ___BLANK___ tokens; blanks[] holds canonical replacements in order.
+- "exp": student annotates a code block with inline comments. prompt includes the question + fenced code (4-15 lines); expected_answer is a reference prose explanation (3-6 sentences).
+
+Rules for "prompt":
+- The prompt is the ONLY text the student sees at study time.
+- If the question references code, include the full code literally inside the prompt in a fenced code block.`, deckName, desc)
 }
 
 func generateSystem(preferredLanguages string) string {

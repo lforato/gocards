@@ -257,10 +257,15 @@ func (s *Study) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		if m.full != "" {
 			s.grader = m.full
 		}
-		s.graderGrade = extractGrade(s.grader)
 		s.stage = stageAnswered
-		// record review
-		return s, s.recordReview(s.graderGrade)
+		grade, ok := extractGrade(s.grader)
+		if !ok {
+			s.graderGrade = 0
+			s.graderErr = fmt.Errorf("grader did not return a FINAL_GRADE — use 1-5 to grade manually")
+			return s, nil
+		}
+		s.graderGrade = grade
+		return s, s.recordReview(grade)
 
 	case streamErrMsg:
 		s.graderErr = m.err
@@ -367,6 +372,12 @@ func (s *Study) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (Screen, tea.Cmd) {
 	switch card.Type {
 	case models.CardMCQ:
+		if len(card.Choices) == 0 {
+			return s, ToastErr("card has no choices — skipping")
+		}
+		if s.mcqCursor >= len(card.Choices) {
+			s.mcqCursor = 0
+		}
 		switch m.String() {
 		case "up", "k":
 			if s.mcqCursor > 0 {
@@ -392,24 +403,24 @@ func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (Screen, tea.
 		}
 
 	case models.CardFill:
+		if len(s.fillInputs) == 0 {
+			return s, nil
+		}
+		if s.fillFocus < 0 || s.fillFocus >= len(s.fillInputs) {
+			s.fillFocus = 0
+		}
 		switch m.String() {
 		case "tab", "down":
-			if len(s.fillInputs) == 0 {
-				return s, nil
-			}
 			s.fillInputs[s.fillFocus].Blur()
 			s.fillFocus = (s.fillFocus + 1) % len(s.fillInputs)
 			s.fillInputs[s.fillFocus].Focus()
 		case "shift+tab", "up":
-			if len(s.fillInputs) == 0 {
-				return s, nil
-			}
 			s.fillInputs[s.fillFocus].Blur()
 			s.fillFocus = (s.fillFocus - 1 + len(s.fillInputs)) % len(s.fillInputs)
 			s.fillInputs[s.fillFocus].Focus()
 		case "ctrl+s", "enter":
-			if len(s.fillInputs) == 0 || card.BlanksData == nil {
-				return s, nil
+			if card.BlanksData == nil || len(card.BlanksData.Blanks) != len(s.fillInputs) {
+				return s, ToastErr("fill card is malformed — skipping")
 			}
 			allCorrect := true
 			partial := 0
@@ -434,9 +445,6 @@ func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (Screen, tea.
 			s.stage = stageAnswered
 			return s, s.recordReview(grade)
 		default:
-			if len(s.fillInputs) == 0 {
-				return s, nil
-			}
 			var cmd tea.Cmd
 			s.fillInputs[s.fillFocus], cmd = s.fillInputs[s.fillFocus].Update(m)
 			return s, cmd
@@ -454,23 +462,26 @@ func (s *Study) startGrading() tea.Cmd {
 	if card == nil {
 		return nil
 	}
+	if card.Type != models.CardCode && card.Type != models.CardExp {
+		return nil
+	}
 	apiKey := ai.ResolveAPIKey(func() (string, bool, error) {
 		return s.store.GetSetting("apiKey")
 	})
 	if apiKey == "" {
-		// no key → fall back to self-grade
 		s.stage = stageAnswered
 		s.graderErr = fmt.Errorf("no API key configured — grade manually with 1-5")
 		return nil
 	}
 
-	var userAnswer string
-	mode := "code"
-	if card.Type == models.CardExp {
+	var userAnswer, mode string
+	switch card.Type {
+	case models.CardExp:
 		userAnswer = s.explanationAnswer
 		mode = "explanation"
-	} else {
+	case models.CardCode:
 		userAnswer = s.codeAnswer
+		mode = "code"
 	}
 
 	client := ai.New(apiKey)
@@ -810,11 +821,14 @@ func extractCodeBlock(prompt string) string {
 
 var gradeRegex = regexp.MustCompile(`FINAL_GRADE:\s*([1-5])`)
 
-func extractGrade(text string) int {
+func extractGrade(text string) (int, bool) {
 	m := gradeRegex.FindStringSubmatch(text)
-	if len(m) >= 2 {
-		g, _ := strconv.Atoi(m[1])
-		return g
+	if len(m) < 2 {
+		return 0, false
 	}
-	return 0
+	g, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0, false
+	}
+	return g, true
 }

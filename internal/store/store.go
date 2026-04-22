@@ -143,15 +143,17 @@ func scanCard(scanner interface {
 	c.CreatedAt = parseTime(ts)
 	if blanks.Valid && blanks.String != "" && blanks.String != "null" {
 		var bd models.BlankData
-		if err := json.Unmarshal([]byte(blanks.String), &bd); err == nil {
-			c.BlanksData = &bd
+		if err := json.Unmarshal([]byte(blanks.String), &bd); err != nil {
+			return c, fmt.Errorf("card %d: decode blanks_data: %w", c.ID, err)
 		}
+		c.BlanksData = &bd
 	}
 	if choices.Valid && choices.String != "" && choices.String != "null" {
 		var cs []models.Choice
-		if err := json.Unmarshal([]byte(choices.String), &cs); err == nil {
-			c.Choices = cs
+		if err := json.Unmarshal([]byte(choices.String), &cs); err != nil {
+			return c, fmt.Errorf("card %d: decode choices: %w", c.ID, err)
 		}
+		c.Choices = cs
 	}
 	return c, nil
 }
@@ -231,14 +233,9 @@ func (s *Store) BulkCreateCards(deckID int64, inputs []CardInput) ([]models.Card
 
 	ids := []int64{}
 	for _, in := range inputs {
-		var blanksJSON, choicesJSON any
-		if in.BlanksData != nil {
-			b, _ := json.Marshal(in.BlanksData)
-			blanksJSON = string(b)
-		}
-		if in.Choices != nil {
-			b, _ := json.Marshal(in.Choices)
-			choicesJSON = string(b)
+		blanksJSON, choicesJSON, err := encodeCardJSON(in)
+		if err != nil {
+			return nil, err
 		}
 		res, err := tx.Exec(
 			`INSERT INTO cards(deck_id,type,language,prompt,initial_code,expected_answer,blanks_data,choices)
@@ -248,7 +245,10 @@ func (s *Store) BulkCreateCards(deckID int64, inputs []CardInput) ([]models.Card
 		if err != nil {
 			return nil, err
 		}
-		id, _ := res.LastInsertId()
+		id, err := res.LastInsertId()
+		if err != nil {
+			return nil, fmt.Errorf("last insert id: %w", err)
+		}
 		ids = append(ids, id)
 	}
 	if err := tx.Commit(); err != nil {
@@ -279,16 +279,11 @@ func (s *Store) GetCard(id int64) (*models.Card, error) {
 }
 
 func (s *Store) UpdateCard(id int64, in CardInput) (*models.Card, error) {
-	var blanksJSON, choicesJSON any
-	if in.BlanksData != nil {
-		b, _ := json.Marshal(in.BlanksData)
-		blanksJSON = string(b)
+	blanksJSON, choicesJSON, err := encodeCardJSON(in)
+	if err != nil {
+		return nil, err
 	}
-	if in.Choices != nil {
-		b, _ := json.Marshal(in.Choices)
-		choicesJSON = string(b)
-	}
-	_, err := s.db.Exec(
+	_, err = s.db.Exec(
 		`UPDATE cards SET type=?, language=?, prompt=?, initial_code=?, expected_answer=?, blanks_data=?, choices=? WHERE id=?`,
 		string(in.Type), in.Language, in.Prompt, in.InitialCode, in.ExpectedAnswer, blanksJSON, choicesJSON, id,
 	)
@@ -296,6 +291,24 @@ func (s *Store) UpdateCard(id int64, in CardInput) (*models.Card, error) {
 		return nil, err
 	}
 	return s.GetCard(id)
+}
+
+func encodeCardJSON(in CardInput) (blanks, choices any, err error) {
+	if in.BlanksData != nil {
+		b, e := json.Marshal(in.BlanksData)
+		if e != nil {
+			return nil, nil, fmt.Errorf("encode blanks_data: %w", e)
+		}
+		blanks = string(b)
+	}
+	if in.Choices != nil {
+		b, e := json.Marshal(in.Choices)
+		if e != nil {
+			return nil, nil, fmt.Errorf("encode choices: %w", e)
+		}
+		choices = string(b)
+	}
+	return blanks, choices, nil
 }
 
 func (s *Store) DeleteCard(id int64) error {
@@ -313,7 +326,10 @@ func (s *Store) CreateReview(cardID int64, grade int, ease float64, interval int
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("last insert id: %w", err)
+	}
 	var r models.Review
 	var ts, ndue string
 	err = s.db.QueryRow(
@@ -352,7 +368,10 @@ func (s *Store) CreateSession(deckID int64) (*models.StudySession, error) {
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("last insert id: %w", err)
+	}
 	return s.GetSession(id)
 }
 

@@ -26,7 +26,18 @@ func migrate(conn *sql.DB) error {
 	return nil
 }
 
+var knownTables = map[string]struct{}{
+	"decks":          {},
+	"cards":          {},
+	"reviews":        {},
+	"study_sessions": {},
+	"settings":       {},
+}
+
 func hasColumn(conn *sql.DB, table, col string) (bool, error) {
+	if _, ok := knownTables[table]; !ok {
+		return false, fmt.Errorf("unknown table %q", table)
+	}
 	rows, err := conn.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
 	if err != nil {
 		return false, err
