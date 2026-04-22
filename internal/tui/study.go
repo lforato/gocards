@@ -173,28 +173,13 @@ func (s *Study) resetPerCardState() tea.Cmd {
 	return nil
 }
 
-// Study layout — prompt stacked on top, vim editor below, both full width:
-//
-//	<header>                                   (1 row)
-//	<blank>                                    (1 row)
-//	prompt text (full width, wraps)            promptH rows
-//	<blank>                                    (1 row)
-//	your answer:                               (1 row)
-//	<vim editor, fills the rest>               editorH rows
-//	<blank>                                    (1 row)
-//	<help>                                     (1 row)
-//	<blank>                                    (1 row)
-//
-// The editor height depends on how many rows the prompt occupies at the
-// current screen width, so View computes it from lipgloss.Height(prompt).
-
 const (
-	// studyChromeRows covers the rows that study.View adds around the per-card
-	// body: deck header (1) + blank (1). The global help is now rendered by
-	// app.go, so no rows are reserved for it here.
-	studyChromeRows   = 2
-	studyRightLabel   = 1 // "your answer:" line above the editor
-	studyPromptChrome = 2 // blank line + label between prompt and editor
+	// Rows study.View adds around the per-card body: deck header + blank.
+	studyChromeRows = 2
+	// "your answer:" label row above the editor.
+	studyRightLabel = 1
+	// Blank line + label between prompt and editor.
+	studyPromptChrome = 2
 )
 
 func (s *Study) bodyHeight() int {
@@ -608,10 +593,8 @@ func (s *Study) viewMCQ(card *models.Card) string {
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
-var fillBlankRe = regexp.MustCompile(`\{\{([^{}]*)\}\}`)
-
 func renderFillTemplate(s string) string {
-	return fillBlankRe.ReplaceAllStringFunc(s, func(match string) string {
+	return blankRe.ReplaceAllStringFunc(s, func(match string) string {
 		inner := match[2 : len(match)-2]
 		return strings.Repeat("_", utf8.RuneCountInString(inner))
 	})

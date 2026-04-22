@@ -58,7 +58,7 @@ func (d *DeckView) Update(msg tea.Msg) (Screen, tea.Cmd) {
 			d.dueIDs[c.ID] = true
 		}
 		if d.cursor >= len(d.cards) {
-			d.cursor = max0(len(d.cards) - 1)
+			d.cursor = max(0, len(d.cards)-1)
 		}
 		return d, nil
 
@@ -221,11 +221,4 @@ func flat(s string) string {
 		out = append(out, r)
 	}
 	return string(out)
-}
-
-func max0(n int) int {
-	if n < 0 {
-		return 0
-	}
-	return n
 }

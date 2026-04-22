@@ -21,6 +21,21 @@ type Screen interface {
 	HelpKeys() []string
 }
 
+// Frame geometry the App reserves around every screen: rounded border (1 cell
+// each side) + 1-cell padding (each side) + header row + blank spacer + help
+// row. Screens use the "inner" WindowSizeMsg which already has these rows
+// subtracted.
+const (
+	frameBorderWidth  = 2
+	framePaddingWidth = 2
+	frameHorizontal   = frameBorderWidth + framePaddingWidth
+	frameHeaderRows   = 1
+	frameBlankRows    = 1
+	frameHelpRows     = 1
+	frameVertical     = frameBorderWidth + framePaddingWidth + frameHeaderRows + frameBlankRows + frameHelpRows
+	minContentW       = 110
+)
+
 // NavMsg pushes or replaces the active screen.
 type NavMsg struct {
 	To      Screen
@@ -59,27 +74,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.w = m.Width
 		a.h = m.Height
 
-		const minContentW = 110
-		switch {
-		case m.Width >= 3*minContentW:
-			// plenty of room — each side gets a third, content also a third
-			a.xMargin = m.Width / 3
-		case m.Width >= minContentW:
-			// below the 1/3 ideal but still fits the minimum — shrink margins, keep content
-			a.xMargin = (m.Width - minContentW) / 2
-		default:
-			// terminal too small for the minimum — no margin, content shrinks
-			a.xMargin = 0
-		}
-
+		a.xMargin = computeXMargin(m.Width)
 		a.contentW = max(0, m.Width-(a.xMargin*2))
 		a.contentH = max(0, m.Height-(a.yMargin*2))
 
-		// forward the usable size to screens. Subtract:
-		//   horizontal — border (2) + padding (2) = 4
-		//   vertical   — border (2) + padding (2) + app header (1) + blank (1) + help (1) = 7
-		inner := tea.WindowSizeMsg{Width: max(0, a.contentW-4), Height: max(0, a.contentH-7)}
-		next, cmd := a.top().Update(inner)
+		next, cmd := a.top().Update(a.innerSize())
 		a.stack[len(a.stack)-1] = next
 		return a, cmd
 	case tea.KeyMsg:
@@ -119,14 +118,7 @@ func (a *App) View() string {
 	header := StylePrimary.Render("gocards") + StyleMuted.Render("  terminal flashcards")
 	content := a.top().View()
 
-	// Inner vertical budget available to the screen body (everything inside
-	// the frame, minus the app header + blank + help row). The help row is
-	// rendered below in a separate JoinVertical step so it sits pinned to
-	// the last row of the frame's content area.
-	// Frame content area = contentH - 4 (border 2 + padding 2).
-	// Body layout inside: header(1) + blank(1) + paddedContent(bodyH) + help(1) = contentH - 4
-	// → bodyH = contentH - 7
-	bodyH := max(1, a.contentH-7)
+	bodyH := max(1, a.contentH-frameVertical)
 	// Pad the screen body so it fills the reserved area — keeps the help
 	// line from floating up when a screen's content is short.
 	paddedContent := lipgloss.NewStyle().Height(bodyH).Render(content)
@@ -171,10 +163,26 @@ func (a *App) activateTop(initCmd tea.Cmd) tea.Cmd {
 	if a.contentW <= 0 || a.contentH <= 0 {
 		return initCmd
 	}
-	inner := tea.WindowSizeMsg{Width: max(0, a.contentW-4), Height: max(0, a.contentH-7)}
-	next, resizeCmd := a.top().Update(inner)
+	next, resizeCmd := a.top().Update(a.innerSize())
 	a.stack[len(a.stack)-1] = next
 	return tea.Batch(initCmd, resizeCmd)
+}
+
+func (a *App) innerSize() tea.WindowSizeMsg {
+	return tea.WindowSizeMsg{
+		Width:  max(0, a.contentW-frameHorizontal),
+		Height: max(0, a.contentH-frameVertical),
+	}
+}
+
+func computeXMargin(width int) int {
+	switch {
+	case width >= 3*minContentW:
+		return width / 3
+	case width >= minContentW:
+		return (width - minContentW) / 2
+	}
+	return 0
 }
 
 type clearToastMsg struct{}

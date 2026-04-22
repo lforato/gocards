@@ -503,13 +503,17 @@ func (s *Store) Streak() (int, error) {
 }
 
 func (s *Store) ReviewsToday() (int, error) {
-	now := time.Now().Local()
-	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	start := startOfLocalDay(time.Now())
 	var n int
 	err := s.db.QueryRow(
 		`SELECT COUNT(*) FROM reviews WHERE reviewed_at >= ?`, formatTime(start.UTC()),
 	).Scan(&n)
 	return n, err
+}
+
+func startOfLocalDay(t time.Time) time.Time {
+	local := t.Local()
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location())
 }
 
 func (s *Store) Retention() (int, error) {

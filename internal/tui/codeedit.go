@@ -60,9 +60,8 @@ func (e CodeEditor) Init() tea.Cmd { return e.editor.Init() }
 func (e CodeEditor) Done() bool    { return e.done }
 func (e CodeEditor) Value() string { return e.value }
 
-// SetSize re-fits the editor chrome and the underlying vimtea viewport to new
-// outer dimensions. Returns the updated CodeEditor so callers holding it by
-// value can reassign: `e.editor = e.editor.SetSize(w, h)`.
+// SetSize re-fits the editor chrome and the underlying vimtea viewport. Returns
+// the updated value so callers holding CodeEditor by value can reassign.
 func (e CodeEditor) SetSize(width, height int) CodeEditor {
 	if width < 20 {
 		width = 80
@@ -72,13 +71,8 @@ func (e CodeEditor) SetSize(width, height int) CodeEditor {
 	}
 	e.width = width
 	e.height = height
-	inner := height - 3
-	if inner < 1 {
-		inner = 1
-	}
-	if e.editor != nil {
-		e.editor.SetSize(width-2, inner)
-	}
+	inner := max(1, height-3)
+	e.editor.SetSize(width-2, inner)
 	return e
 }
 
@@ -121,47 +115,30 @@ func (e CodeEditor) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, titleBar, box)
 }
 
-// langExt maps a language identifier to a filename extension so vimtea's
-// chroma-based highlighter can pick the right lexer.
+var langExtByName = map[string]string{
+	"javascript": ".js", "js": ".js",
+	"typescript": ".ts", "ts": ".ts",
+	"tsx": ".tsx",
+	"jsx": ".jsx",
+	"python": ".py", "py": ".py",
+	"go": ".go", "golang": ".go",
+	"rust": ".rs", "rs": ".rs",
+	"c":      ".c",
+	"cpp":    ".cpp", "c++": ".cpp",
+	"csharp": ".cs", "cs": ".cs", "c#": ".cs",
+	"java":   ".java",
+	"ruby":   ".rb", "rb": ".rb",
+	"sql":    ".sql",
+	"sh":     ".sh", "bash": ".sh", "shell": ".sh",
+	"html":   ".html",
+	"css":    ".css",
+	"json":   ".json",
+	"md":     ".md", "markdown": ".md",
+}
+
 func langExt(lang string) string {
-	switch strings.ToLower(lang) {
-	case "javascript", "js":
-		return ".js"
-	case "typescript", "ts":
-		return ".ts"
-	case "tsx":
-		return ".tsx"
-	case "jsx":
-		return ".jsx"
-	case "python", "py":
-		return ".py"
-	case "go", "golang":
-		return ".go"
-	case "rust", "rs":
-		return ".rs"
-	case "c":
-		return ".c"
-	case "cpp", "c++":
-		return ".cpp"
-	case "csharp", "cs", "c#":
-		return ".cs"
-	case "java":
-		return ".java"
-	case "ruby", "rb":
-		return ".rb"
-	case "sql":
-		return ".sql"
-	case "sh", "bash", "shell":
-		return ".sh"
-	case "html":
-		return ".html"
-	case "css":
-		return ".css"
-	case "json":
-		return ".json"
-	case "md", "markdown":
-		return ".md"
-	default:
-		return ".txt"
+	if ext, ok := langExtByName[strings.ToLower(lang)]; ok {
+		return ext
 	}
+	return ".txt"
 }
