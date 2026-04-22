@@ -132,13 +132,9 @@ func (c *Create) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 	case stepPickDeck:
 		switch m.String() {
 		case "up", "k":
-			if c.deckCursor > 0 {
-				c.deckCursor--
-			}
+			c.deckCursor = cursorUp(c.deckCursor)
 		case "down", "j":
-			if c.deckCursor < len(c.decks) {
-				c.deckCursor++
-			}
+			c.deckCursor = cursorDown(c.deckCursor, len(c.decks)+1)
 		case "enter":
 			if c.deckCursor == len(c.decks) || len(c.decks) == 0 {
 				c.step = stepNewDeck
@@ -192,13 +188,9 @@ func (c *Create) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 	case stepPickType:
 		switch m.String() {
 		case "up", "k":
-			if c.typeCursor > 0 {
-				c.typeCursor--
-			}
+			c.typeCursor = cursorUp(c.typeCursor)
 		case "down", "j":
-			if c.typeCursor < len(cardTypes)-1 {
-				c.typeCursor++
-			}
+			c.typeCursor = cursorDown(c.typeCursor, len(cardTypes))
 		case "enter":
 			if c.targetDeck == nil {
 				return c, nil
@@ -218,7 +210,7 @@ func (c *Create) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 func (c *Create) cycleNewFocus(delta int) {
 	fields := []*textinput.Model{&c.newName, &c.newDesc, &c.newColor}
 	fields[c.newFieldFocus].Blur()
-	c.newFieldFocus = (c.newFieldFocus + delta + len(fields)) % len(fields)
+	c.newFieldFocus = cycleFocus(c.newFieldFocus, delta, len(fields))
 	fields[c.newFieldFocus].Focus()
 }
 
@@ -243,27 +235,18 @@ func (c *Create) viewPickDeck() string {
 	}
 	for i, d := range c.decks {
 		sel := i == c.deckCursor
-		prefix := "  "
-		if sel {
-			prefix = StylePrimary.Render("▶ ")
-		}
-		dot := lipgloss.NewStyle().Foreground(lipgloss.Color(d.Color)).Render("●")
 		name := d.Name
 		if sel {
 			name = StyleSelected.Render(name)
 		}
-		rows = append(rows, fmt.Sprintf("%s%s  %s", prefix, dot, name))
+		rows = append(rows, fmt.Sprintf("%s%s  %s", selectionPrefix(sel), colorBullet(d.Color), name))
 	}
 	sel := c.deckCursor == len(c.decks)
-	prefix := "  "
-	if sel {
-		prefix = StylePrimary.Render("▶ ")
-	}
 	label := "+ new deck"
 	if sel {
 		label = StyleSelected.Render(label)
 	}
-	rows = append(rows, prefix+label)
+	rows = append(rows, selectionPrefix(sel)+label)
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
@@ -285,12 +268,7 @@ func (c *Create) viewPickType() string {
 	rows := []string{title, ""}
 	for i, t := range cardTypes {
 		sel := i == c.typeCursor
-		prefix := "  "
-		if sel {
-			prefix = StylePrimary.Render("▶ ")
-		}
-		badge := typeBadge(t, sel)
-		rows = append(rows, prefix+badge+"  "+StyleMuted.Render(typeDescription(t)))
+		rows = append(rows, selectionPrefix(sel)+typeBadge(t, sel)+"  "+StyleMuted.Render(typeDescription(t)))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }

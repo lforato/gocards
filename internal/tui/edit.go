@@ -103,8 +103,7 @@ func (e *Edit) cycleFocus(delta int) {
 			break
 		}
 	}
-	idx = (idx + delta + len(fields)) % len(fields)
-	e.focus = fields[idx]
+	e.focus = fields[cycleFocus(idx, delta, len(fields))]
 	e.updateFocus()
 }
 
@@ -278,14 +277,10 @@ func (e *Edit) updateChoicesKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 		e.cycleFocus(-1)
 		return e, nil
 	case "up", "k":
-		if e.choiceCursor > 0 {
-			e.choiceCursor--
-		}
+		e.choiceCursor = cursorUp(e.choiceCursor)
 		return e, nil
 	case "down", "j":
-		if e.choiceCursor < len(choices)-1 {
-			e.choiceCursor++
-		}
+		e.choiceCursor = cursorDown(e.choiceCursor, len(choices))
 		return e, nil
 	case " ", "space":
 		if len(choices) == 0 {
@@ -308,12 +303,7 @@ func (e *Edit) updateChoicesKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 			return e, nil
 		}
 		e.card.Choices = append(choices[:e.choiceCursor], choices[e.choiceCursor+1:]...)
-		if e.choiceCursor > 0 && e.choiceCursor >= len(e.card.Choices) {
-			e.choiceCursor = len(e.card.Choices) - 1
-		}
-		if e.choiceCursor < 0 {
-			e.choiceCursor = 0
-		}
+		e.choiceCursor = max(0, min(e.choiceCursor, len(e.card.Choices)-1))
 		return e, nil
 	case "e", "enter":
 		if len(choices) == 0 {
@@ -559,18 +549,10 @@ func (e *Edit) viewChoices() string {
 }
 
 func typeBadge(t models.CardType, bold bool) string {
-	style := lipgloss.NewStyle().Bold(bold)
-	switch t {
-	case models.CardCode:
-		return style.Foreground(ColorSuccess).Render("code")
-	case models.CardMCQ:
-		return style.Foreground(ColorAccent).Render("mcq")
-	case models.CardFill:
-		return style.Foreground(ColorWarn).Render("fill")
-	case models.CardExp:
-		return style.Foreground(ColorPrimary).Render("exp")
-	}
-	return string(t)
+	return lipgloss.NewStyle().
+		Foreground(cardTypeColor(t)).
+		Bold(bold).
+		Render(string(t))
 }
 
 func previewBox(content, placeholder string) string {

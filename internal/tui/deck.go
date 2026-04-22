@@ -87,13 +87,9 @@ func (d *DeckView) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		case "q":
 			return d, tea.Quit
 		case "up", "k":
-			if d.cursor > 0 {
-				d.cursor--
-			}
+			d.cursor = cursorUp(d.cursor)
 		case "down", "j":
-			if d.cursor < len(d.cards)-1 {
-				d.cursor++
-			}
+			d.cursor = cursorDown(d.cursor, len(d.cards))
 		case "s":
 			dueCount := 0
 			for _, c := range d.cards {
@@ -132,7 +128,7 @@ func (d *DeckView) View() string {
 		return StyleDanger.Render("error: " + d.err.Error())
 	}
 
-	color := lipgloss.NewStyle().Foreground(lipgloss.Color(d.deck.Color)).Render("●")
+	color := colorBullet(d.deck.Color)
 
 	dueCount := 0
 	for _, c := range d.cards {
@@ -156,36 +152,21 @@ func (d *DeckView) View() string {
 	}
 	for i, c := range d.cards {
 		sel := i == d.cursor
-		prefix := "  "
 		style := lipgloss.NewStyle().Foreground(ColorFg)
 		if sel {
-			prefix = StylePrimary.Render("▶ ")
 			style = StyleSelected
 		}
 		due := "  "
 		if d.dueIDs[c.ID] {
 			due = StylePrimary.Render("● ")
 		}
-		kind := fmt.Sprintf("[%s]", c.Type)
-		kindStyle := StyleMuted
-		switch c.Type {
-		case models.CardMCQ:
-			kindStyle = lipgloss.NewStyle().Foreground(ColorAccent)
-		case models.CardCode:
-			kindStyle = lipgloss.NewStyle().Foreground(ColorSuccess)
-		case models.CardFill:
-			kindStyle = lipgloss.NewStyle().Foreground(ColorWarn)
-		case models.CardExp:
-			kindStyle = lipgloss.NewStyle().Foreground(ColorPrimary)
-		}
-		line := fmt.Sprintf("%s%s%s  %s  %s",
-			prefix,
+		rows = append(rows, fmt.Sprintf("%s%s%s  %s  %s",
+			selectionPrefix(sel),
 			due,
-			kindStyle.Render(kind),
+			cardTypeBadge(c.Type),
 			StyleMuted.Render(fmt.Sprintf("(%s)", c.Language)),
 			style.Render(truncate(flat(c.Prompt), 80)),
-		)
-		rows = append(rows, line)
+		))
 	}
 
 	if d.confirmDelete && d.cursor < len(d.cards) {

@@ -59,12 +59,12 @@ func (s *Settings) Update(msg tea.Msg) (Screen, tea.Cmd) {
 			return s, func() tea.Msg { return NavMsg{Pop: true} }
 		case "tab", "down":
 			s.fields[s.focus].Blur()
-			s.focus = (s.focus + 1) % len(s.fields)
+			s.focus = cycleFocus(s.focus, 1, len(s.fields))
 			s.fields[s.focus].Focus()
 			return s, nil
 		case "shift+tab", "up":
 			s.fields[s.focus].Blur()
-			s.focus = (s.focus - 1 + len(s.fields)) % len(s.fields)
+			s.focus = cycleFocus(s.focus, -1, len(s.fields))
 			s.fields[s.focus].Focus()
 			return s, nil
 		case "ctrl+s":

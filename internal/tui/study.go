@@ -450,12 +450,10 @@ func (s *Study) startGrading() tea.Cmd {
 	if card.Type != models.CardCode && card.Type != models.CardExp {
 		return nil
 	}
-	apiKey := ai.ResolveAPIKey(func() (string, bool, error) {
-		return s.store.GetSetting("apiKey")
-	})
-	if apiKey == "" {
+	client, err := resolveAIClient(s.store)
+	if err != nil {
 		s.stage = stageAnswered
-		s.graderErr = fmt.Errorf("no API key configured — grade manually with 1-5")
+		s.graderErr = fmt.Errorf("%w — grade manually with 1-5", err)
 		return nil
 	}
 
@@ -469,7 +467,6 @@ func (s *Study) startGrading() tea.Cmd {
 		mode = "code"
 	}
 
-	client := ai.New(apiKey)
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.grader = ""
 	s.graderGrade = 0

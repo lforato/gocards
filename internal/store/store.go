@@ -95,26 +95,11 @@ func (s *Store) CreateDeck(name, description, color string) (*models.Deck, error
 }
 
 func (s *Store) UpdateDeck(id int64, name, description, color *string) (*models.Deck, error) {
-	sets := []string{}
-	args := []any{}
-	if name != nil {
-		sets = append(sets, "name = ?")
-		args = append(args, *name)
-	}
-	if description != nil {
-		sets = append(sets, "description = ?")
-		args = append(args, *description)
-	}
-	if color != nil {
-		sets = append(sets, "color = ?")
-		args = append(args, *color)
-	}
-	if len(sets) == 0 {
-		return s.GetDeck(id)
-	}
-	args = append(args, id)
-	q := fmt.Sprintf(`UPDATE decks SET %s WHERE id = ?`, strings.Join(sets, ", "))
-	if _, err := s.db.Exec(q, args...); err != nil {
+	up := newPatch()
+	up.setIfPtr("name", name)
+	up.setIfPtr("description", description)
+	up.setIfPtr("color", color)
+	if err := up.exec(s.db, "decks", id); err != nil {
 		return nil, err
 	}
 	return s.GetDeck(id)
@@ -397,24 +382,15 @@ func (s *Store) GetSession(id int64) (*models.StudySession, error) {
 }
 
 func (s *Store) UpdateSession(id int64, cardsReviewed *int, ended *time.Time, clearEnded bool) (*models.StudySession, error) {
-	sets := []string{}
-	args := []any{}
-	if cardsReviewed != nil {
-		sets = append(sets, "cards_reviewed = ?")
-		args = append(args, *cardsReviewed)
+	up := newPatch()
+	up.setIfPtr("cards_reviewed", cardsReviewed)
+	switch {
+	case clearEnded:
+		up.setRaw("ended_at", "NULL")
+	case ended != nil:
+		up.set("ended_at", formatTime(*ended))
 	}
-	if clearEnded {
-		sets = append(sets, "ended_at = NULL")
-	} else if ended != nil {
-		sets = append(sets, "ended_at = ?")
-		args = append(args, formatTime(*ended))
-	}
-	if len(sets) == 0 {
-		return s.GetSession(id)
-	}
-	args = append(args, id)
-	q := fmt.Sprintf(`UPDATE study_sessions SET %s WHERE id = ?`, strings.Join(sets, ", "))
-	if _, err := s.db.Exec(q, args...); err != nil {
+	if err := up.exec(s.db, "study_sessions", id); err != nil {
 		return nil, err
 	}
 	return s.GetSession(id)
@@ -568,6 +544,50 @@ func (s *Store) Activity() (map[string]int, error) {
 		out[t.Format("2006-01-02")]++
 	}
 	return out, rows.Err()
+}
+
+// patch accumulates conditional UPDATE column assignments so we don't rebuild
+// the `SET col = ?, col = ?, …` string by hand in every update method. Only
+// columns whose values were actually provided end up in the final statement.
+type patch struct {
+	sets []string
+	args []any
+}
+
+func newPatch() *patch { return &patch{} }
+
+func (p *patch) set(col string, val any) {
+	p.sets = append(p.sets, col+" = ?")
+	p.args = append(p.args, val)
+}
+
+func (p *patch) setRaw(col, literal string) {
+	p.sets = append(p.sets, col+" = "+literal)
+}
+
+// setIfPtr appends col = *v only when v is non-nil. Centralizes the nil-check
+// the optional-update callers were all duplicating.
+func (p *patch) setIfPtr(col string, v any) {
+	switch val := v.(type) {
+	case *string:
+		if val != nil {
+			p.set(col, *val)
+		}
+	case *int:
+		if val != nil {
+			p.set(col, *val)
+		}
+	}
+}
+
+func (p *patch) exec(db *sql.DB, table string, id int64) error {
+	if len(p.sets) == 0 {
+		return nil
+	}
+	q := fmt.Sprintf(`UPDATE %s SET %s WHERE id = ?`, table, strings.Join(p.sets, ", "))
+	args := append(p.args, id)
+	_, err := db.Exec(q, args...)
+	return err
 }
 
 // DeckSummary returns card + due counts per deck (used by dashboard).

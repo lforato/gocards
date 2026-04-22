@@ -97,21 +97,19 @@ func (d *Dashboard) Update(msg tea.Msg) (Screen, tea.Cmd) {
 			return d, d.load()
 		case "n":
 			return d, func() tea.Msg { return NavMsg{To: NewCreate(d.store, 0)} }
+		case "g":
+			return d, d.openGenerate()
 		case "s":
 			return d, func() tea.Msg { return NavMsg{To: NewSettings(d.store)} }
 		case "up", "k":
-			if d.cursor > 0 {
-				d.cursor--
-			}
+			d.cursor = cursorUp(d.cursor)
 		case "down", "j":
-			if d.cursor < len(d.stats.decks)-1+2 {
-				d.cursor++
-			}
+			d.cursor = cursorDown(d.cursor, len(d.stats.decks)+3)
 		case "enter":
 			return d, d.activate()
 		case "S":
-			if d.cursor >= 2 && d.cursor-2 < len(d.stats.decks) {
-				deck := d.stats.decks[d.cursor-2]
+			if d.cursor >= 3 && d.cursor-3 < len(d.stats.decks) {
+				deck := d.stats.decks[d.cursor-3]
 				if deck.DueCount > 0 {
 					return d, func() tea.Msg {
 						return NavMsg{To: NewStudy(d.store, deck.Deck)}
@@ -128,15 +126,37 @@ func (d *Dashboard) activate() tea.Cmd {
 	case 0:
 		return func() tea.Msg { return NavMsg{To: NewCreate(d.store, 0)} }
 	case 1:
+		return d.openGenerate()
+	case 2:
 		return func() tea.Msg { return NavMsg{To: NewSettings(d.store)} }
 	default:
-		idx := d.cursor - 2
+		idx := d.cursor - 3
 		if idx < 0 || idx >= len(d.stats.decks) {
 			return nil
 		}
 		deck := d.stats.decks[idx]
 		return func() tea.Msg { return NavMsg{To: NewDeckView(d.store, deck.Deck)} }
 	}
+}
+
+// openGenerate opens the AI-chat card generator, seeded with the deck under
+// the cursor if any, else the first deck, else a synthetic fallback (the
+// picker inside AIGenerate lets the user change it afterward).
+func (d *Dashboard) openGenerate() tea.Cmd {
+	var deck models.Deck
+	if d.cursor >= 3 {
+		idx := d.cursor - 3
+		if idx >= 0 && idx < len(d.stats.decks) {
+			deck = d.stats.decks[idx].Deck
+		}
+	}
+	if deck.ID == 0 && len(d.stats.decks) > 0 {
+		deck = d.stats.decks[0].Deck
+	}
+	if deck.ID == 0 {
+		return ToastErr("create a deck first")
+	}
+	return func() tea.Msg { return NavMsg{To: NewAIGenerate(d.store, deck)} }
 }
 
 func (d *Dashboard) View() string {
@@ -176,17 +196,13 @@ func (d *Dashboard) View() string {
 	// Actions + decks list
 	var rows []string
 	rows = append(rows, renderRow("+ New cards", "n", d.cursor == 0))
-	rows = append(rows, renderRow("⚙ Settings", "s", d.cursor == 1))
+	rows = append(rows, renderRow("🤖 Generate with AI", "g", d.cursor == 1))
+	rows = append(rows, renderRow("⚙ Settings", "s", d.cursor == 2))
 	rows = append(rows, "")
 	rows = append(rows, StyleMuted.Render(fmt.Sprintf("decks · %d", len(s.decks))))
 
 	for i, deck := range s.decks {
-		sel := d.cursor == i+2
-		marker := "  "
-		if sel {
-			marker = StylePrimary.Render("▶ ")
-		}
-		color := lipgloss.NewStyle().Foreground(lipgloss.Color(deck.Color)).Render("●")
+		sel := d.cursor == i+3
 		name := deck.Name
 		if sel {
 			name = StyleSelected.Render(name)
@@ -195,14 +211,13 @@ func (d *Dashboard) View() string {
 		if deck.DueCount > 0 {
 			due = "  " + StylePrimary.Render(fmt.Sprintf("%d due", deck.DueCount))
 		}
-		line := fmt.Sprintf("%s%s %s  %s%s",
-			marker,
-			color,
+		rows = append(rows, fmt.Sprintf("%s%s %s  %s%s",
+			selectionPrefix(sel),
+			colorBullet(deck.Color),
 			name,
 			StyleMuted.Render(fmt.Sprintf("(%s)", pluralize(deck.CardCount, "card", "cards"))),
 			due,
-		)
-		rows = append(rows, line)
+		))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left,
@@ -215,7 +230,7 @@ func (d *Dashboard) View() string {
 }
 
 func (d *Dashboard) HelpKeys() []string {
-	return []string{"↑/↓ select", "enter open", "S study", "n new", "s settings", "r reload", "q quit"}
+	return []string{"↑/↓ select", "enter open", "S study", "n new", "g ai", "s settings", "r reload", "q quit"}
 }
 
 func statBox(label, value string, w int) string {
@@ -227,11 +242,9 @@ func statBox(label, value string, w int) string {
 }
 
 func renderRow(text, key string, selected bool) string {
-	prefix := "  "
 	style := lipgloss.NewStyle().Foreground(ColorFg)
 	if selected {
-		prefix = StylePrimary.Render("▶ ")
 		style = StyleSelected
 	}
-	return prefix + style.Render(text) + "  " + StyleMuted.Render("["+key+"]")
+	return selectionPrefix(selected) + style.Render(text) + "  " + StyleMuted.Render("["+key+"]")
 }
