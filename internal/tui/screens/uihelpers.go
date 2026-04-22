@@ -6,7 +6,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/tui"
 )
 
@@ -50,24 +49,6 @@ func selectionPrefix(selected bool) string {
 
 func colorBullet(hex string) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(hex)).Render("●")
-}
-
-func cardTypeColor(t models.CardType) lipgloss.Color {
-	switch t {
-	case models.CardMCQ:
-		return tui.ColorAccent
-	case models.CardCode:
-		return tui.ColorSuccess
-	case models.CardFill:
-		return tui.ColorWarn
-	case models.CardExp:
-		return tui.ColorPrimary
-	}
-	return tui.ColorMuted
-}
-
-func cardTypeBadge(t models.CardType) string {
-	return lipgloss.NewStyle().Foreground(cardTypeColor(t)).Render(fmt.Sprintf("[%s]", t))
 }
 
 func truncate(s string, n int) string {

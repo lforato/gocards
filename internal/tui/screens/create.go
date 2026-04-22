@@ -40,11 +40,13 @@ type Create struct {
 	typeCursor int
 }
 
-var cardTypes = []models.CardType{
-	models.CardCode,
-	models.CardMCQ,
-	models.CardFill,
-	models.CardExp,
+func cardTypes() []models.CardType {
+	kinds := models.AllKinds()
+	out := make([]models.CardType, len(kinds))
+	for i, k := range kinds {
+		out[i] = k.Type
+	}
+	return out
 }
 
 func NewCreate(s *store.Store, preselectedDeckID int64) *Create {
@@ -191,12 +193,12 @@ func (c *Create) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 		case "up", "k":
 			c.typeCursor = cursorUp(c.typeCursor)
 		case "down", "j":
-			c.typeCursor = cursorDown(c.typeCursor, len(cardTypes))
+			c.typeCursor = cursorDown(c.typeCursor, len(cardTypes()))
 		case "enter":
 			if c.targetDeck == nil {
 				return c, nil
 			}
-			t := cardTypes[c.typeCursor]
+			t := cardTypes()[c.typeCursor]
 			draft := models.Card{
 				DeckID:   c.targetDeck.ID,
 				Type:     t,
@@ -267,7 +269,7 @@ func (c *Create) viewPickType() string {
 		title += "  " + tui.StyleMuted.Render("→ "+c.targetDeck.Name)
 	}
 	rows := []string{title, ""}
-	for i, t := range cardTypes {
+	for i, t := range cardTypes() {
 		sel := i == c.typeCursor
 		rows = append(rows, selectionPrefix(sel)+typeBadge(t, sel)+"  "+tui.StyleMuted.Render(typeDescription(t)))
 	}
@@ -284,15 +286,5 @@ func (c *Create) HelpKeys() []string {
 }
 
 func typeDescription(t models.CardType) string {
-	switch t {
-	case models.CardCode:
-		return "write code to solve a problem"
-	case models.CardMCQ:
-		return "multiple choice question"
-	case models.CardFill:
-		return "fill in the blanks"
-	case models.CardExp:
-		return "annotate / explain a code snippet"
-	}
-	return ""
+	return models.Kind(t).Description
 }

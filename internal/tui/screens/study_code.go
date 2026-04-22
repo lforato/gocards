@@ -64,10 +64,7 @@ func (s *Study) handleCodeSubmit(m codeSubmitMsg) (tui.Screen, tea.Cmd) {
 
 func (s *Study) startGrading() tea.Cmd {
 	card := s.current()
-	if card == nil {
-		return nil
-	}
-	if card.Type != models.CardCode && card.Type != models.CardExp {
+	if card == nil || !models.Kind(card.Type).IsAIGraded {
 		return nil
 	}
 	client, err := resolveAIClient(s.store)
@@ -77,15 +74,7 @@ func (s *Study) startGrading() tea.Cmd {
 		return nil
 	}
 
-	var userAnswer, mode string
-	switch card.Type {
-	case models.CardExp:
-		userAnswer = s.explanationAnswer
-		mode = "explanation"
-	case models.CardCode:
-		userAnswer = s.codeAnswer
-		mode = "code"
-	}
+	userAnswer, mode := s.gradingInputFor(card)
 
 	s.ctx, s.cancel = context.WithTimeout(context.Background(), gradeTimeout)
 	s.grader = ""
@@ -98,6 +87,13 @@ func (s *Study) startGrading() tea.Cmd {
 		Mode:           mode,
 	})
 	return tea.Batch(s.spin.Tick, pumpStream(s.streamCh))
+}
+
+func (s *Study) gradingInputFor(card *models.Card) (userAnswer, mode string) {
+	if card.Type == models.CardExp {
+		return s.explanationAnswer, "explanation"
+	}
+	return s.codeAnswer, "code"
 }
 
 func (s *Study) viewCode(card *models.Card) string {

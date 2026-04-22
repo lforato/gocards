@@ -523,7 +523,7 @@ func parseCardBlock(raw string) (store.CardInput, bool) {
 		return store.CardInput{}, false
 	}
 	ct := models.CardType(strings.ToLower(strings.TrimSpace(dto.Type)))
-	if !isKnownCardType(ct) {
+	if !models.IsKnownCardType(ct) {
 		return store.CardInput{}, false
 	}
 
@@ -540,14 +540,6 @@ func parseCardBlock(raw string) (store.CardInput, bool) {
 		assignMissingChoiceIDs(in.Choices)
 	}
 	return in, true
-}
-
-func isKnownCardType(t models.CardType) bool {
-	switch t {
-	case models.CardMCQ, models.CardCode, models.CardFill, models.CardExp:
-		return true
-	}
-	return false
 }
 
 func defaultLanguage(lang string) string {

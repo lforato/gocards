@@ -116,17 +116,16 @@ func (s *Study) resetPerCardState() tea.Cmd {
 	s.stage = stageQuestion
 	s.codeEditor = nil
 
-	switch card.Type {
-	case models.CardFill:
+	kind := models.Kind(card.Type)
+	s.fillInputs = nil
+	if kind.UsesBlanks {
 		s.initFillInputs(card)
-	default:
-		s.fillInputs = nil
 	}
 
 	if card.Type == models.CardExp {
 		s.explanationAnswer = extractCodeBlock(card.Prompt)
 	}
-	if card.Type == models.CardCode || card.Type == models.CardExp {
+	if kind.UsesCodeEditor {
 		return s.initCodeEditor(card)
 	}
 	return nil
@@ -237,18 +236,15 @@ func (s *Study) forwardToEmbedded(msg tea.Msg) tea.Cmd {
 	if card == nil {
 		return nil
 	}
-	switch card.Type {
-	case models.CardCode, models.CardExp:
-		if s.codeEditor != nil {
-			_, cmd := s.codeEditor.Update(msg)
-			return cmd
-		}
-	case models.CardFill:
-		if s.fillFocus < len(s.fillInputs) {
-			var cmd tea.Cmd
-			s.fillInputs[s.fillFocus], cmd = s.fillInputs[s.fillFocus].Update(msg)
-			return cmd
-		}
+	kind := models.Kind(card.Type)
+	switch {
+	case kind.UsesCodeEditor && s.codeEditor != nil:
+		_, cmd := s.codeEditor.Update(msg)
+		return cmd
+	case kind.UsesBlanks && s.fillFocus < len(s.fillInputs):
+		var cmd tea.Cmd
+		s.fillInputs[s.fillFocus], cmd = s.fillInputs[s.fillFocus].Update(msg)
+		return cmd
 	}
 	return nil
 }
@@ -291,7 +287,7 @@ func (s *Study) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 
 func (s *Study) inVimQuestion(card *models.Card) bool {
 	return s.stage == stageQuestion && card != nil && s.codeEditor != nil &&
-		(card.Type == models.CardCode || card.Type == models.CardExp)
+		models.Kind(card.Type).UsesCodeEditor
 }
 
 // routeToVim forwards keys to the inline editor. Only esc-from-normal-mode
@@ -306,11 +302,8 @@ func (s *Study) routeToVim(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 }
 
 func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (tui.Screen, tea.Cmd) {
-	switch card.Type {
-	case models.CardMCQ:
-		return s.handleMCQKey(m, card)
-	case models.CardFill:
-		return s.handleFillKey(m, card)
+	if b := studyBehaviors[card.Type]; b.HandleKey != nil {
+		return b.HandleKey(s, m, card)
 	}
 	return s, nil
 }
@@ -318,7 +311,7 @@ func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (tui.Screen, 
 func (s *Study) handleAnsweredKey(m tea.KeyMsg, card *models.Card) (tui.Screen, tea.Cmd) {
 	switch m.String() {
 	case "1", "2", "3", "4", "5":
-		if card.Type == models.CardCode || card.Type == models.CardExp {
+		if models.Kind(card.Type).IsAIGraded {
 			g, _ := strconv.Atoi(m.String())
 			return s, s.recordReview(g)
 		}
@@ -415,15 +408,8 @@ func (s *Study) renderHeader() string {
 }
 
 func (s *Study) renderBody(card *models.Card) string {
-	switch card.Type {
-	case models.CardMCQ:
-		return s.viewMCQ(card)
-	case models.CardFill:
-		return s.viewFill(card)
-	case models.CardCode:
-		return s.viewCode(card)
-	case models.CardExp:
-		return s.viewExp(card)
+	if b, ok := studyBehaviors[card.Type]; ok && b.Render != nil {
+		return b.Render(s, card)
 	}
 	return tui.StyleMuted.Render("(unknown card type)")
 }
@@ -454,21 +440,5 @@ func (s *Study) HelpKeys() []string {
 	return []string{"esc end"}
 }
 
-func questionStageHelp(t models.CardType) []string {
-	switch t {
-	case models.CardMCQ:
-		return []string{"↑/↓ pick", "enter submit", "esc end"}
-	case models.CardFill:
-		return []string{"tab switch", "enter submit", "esc end"}
-	case models.CardCode, models.CardExp:
-		return []string{"i insert", "esc normal", "ctrl+s submit", "esc end (from normal)"}
-	}
-	return []string{"esc end"}
-}
-
-func answeredStageHelp(t models.CardType) []string {
-	if t == models.CardCode || t == models.CardExp {
-		return []string{"1-5 override", "enter next", "esc end"}
-	}
-	return []string{"enter next", "esc end"}
-}
+func questionStageHelp(t models.CardType) []string { return ui(t).QuestionHelp }
+func answeredStageHelp(t models.CardType) []string { return ui(t).AnsweredHelp }

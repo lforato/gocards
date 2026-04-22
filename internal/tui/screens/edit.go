@@ -80,16 +80,7 @@ func NewEdit(s *store.Store, card models.Card) *Edit {
 func (e *Edit) Init() tea.Cmd { return textinput.Blink }
 
 func (e *Edit) visibleFields() []editField {
-	switch e.card.Type {
-	case models.CardMCQ:
-		return []editField{fType, fLanguage, fPrompt, fChoices}
-	case models.CardFill:
-		return []editField{fType, fLanguage, fPrompt, fTemplate}
-	case models.CardCode:
-		return []editField{fLanguage, fPrompt, fInitialCode, fExpected}
-	default:
-		return []editField{fType, fLanguage, fPrompt, fExpected}
-	}
+	return ui(e.card.Type).EditFields
 }
 
 func (e *Edit) cycleFocus(delta int) {
@@ -540,13 +531,6 @@ func (e *Edit) viewChoices() string {
 		lines = append(lines, fmt.Sprintf("%s%s %s. %s", prefix, mark, id, text))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
-}
-
-func typeBadge(t models.CardType, bold bool) string {
-	return lipgloss.NewStyle().
-		Foreground(cardTypeColor(t)).
-		Bold(bold).
-		Render(string(t))
 }
 
 func previewBox(content, placeholder string) string {
