@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -60,8 +59,10 @@ type App struct {
 	toastIsErr         bool
 }
 
-func NewApp(s *store.Store) *App {
-	return &App{store: s, stack: []Screen{NewDashboard(s)}, xMargin: 2, yMargin: 1}
+// NewApp starts the screen stack on initial — callers pass in whichever
+// screen the app should boot into (typically screens.NewDashboard).
+func NewApp(s *store.Store, initial Screen) *App {
+	return &App{store: s, stack: []Screen{initial}, xMargin: 2, yMargin: 1}
 }
 
 func (a *App) Init() tea.Cmd { return a.top().Init() }
@@ -193,24 +194,4 @@ func Toast(s string) tea.Cmd {
 
 func ToastErr(s string) tea.Cmd {
 	return func() tea.Msg { return ToastMsg{Text: s, IsError: true} }
-}
-
-// --- helpers ---
-
-func truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	if n <= 1 {
-		return string(r[:n])
-	}
-	return string(r[:n-1]) + "…"
-}
-
-func pluralize(n int, singular, plural string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, singular)
-	}
-	return fmt.Sprintf("%d %s", n, plural)
 }

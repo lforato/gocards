@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lforato/gocards/internal/models"
+	"github.com/lforato/gocards/internal/tui"
 )
 
 func (s *Study) initFillInputs(card *models.Card) {
@@ -30,7 +31,7 @@ func (s *Study) initFillInputs(card *models.Card) {
 	s.fillFocus = 0
 }
 
-func (s *Study) handleFillKey(m tea.KeyMsg, card *models.Card) (Screen, tea.Cmd) {
+func (s *Study) handleFillKey(m tea.KeyMsg, card *models.Card) (tui.Screen, tea.Cmd) {
 	if len(s.fillInputs) == 0 {
 		return s, nil
 	}
@@ -61,9 +62,9 @@ func (s *Study) focusFillInput(next int) {
 // submitFill grades the student's filled blanks against the card's canonical
 // values. Matching is case-insensitive and trims surrounding whitespace so
 // minor typographical differences don't mark a correct answer wrong.
-func (s *Study) submitFill(card *models.Card) (Screen, tea.Cmd) {
+func (s *Study) submitFill(card *models.Card) (tui.Screen, tea.Cmd) {
 	if card.BlanksData == nil || len(card.BlanksData.Blanks) != len(s.fillInputs) {
-		return s, ToastErr("fill card is malformed — skipping")
+		return s, tui.ToastErr("fill card is malformed — skipping")
 	}
 	partial := 0
 	for i, ti := range s.fillInputs {
@@ -113,21 +114,21 @@ func (s *Study) viewFill(card *models.Card) string {
 		"",
 		codeBox(template),
 		"",
-		StyleMuted.Render("blanks:"),
+		tui.StyleMuted.Render("blanks:"),
 	}
 	for i := range s.fillInputs {
 		prefix := "  "
 		if i == s.fillFocus {
-			prefix = StylePrimary.Render("▶ ")
+			prefix = tui.StylePrimary.Render("▶ ")
 		}
 		rows = append(rows, prefix+fmt.Sprintf("%d: ", i+1)+s.fillInputs[i].View())
 	}
 	rows = append(rows, "")
 
 	if s.stage == stageAnswered {
-		rows = append(rows, StylePrimary.Render(fmt.Sprintf("→ %s  (grade %d)", s.resultNote, s.resultGrade)))
+		rows = append(rows, tui.StylePrimary.Render(fmt.Sprintf("→ %s  (grade %d)", s.resultNote, s.resultGrade)))
 		if card.BlanksData != nil {
-			rows = append(rows, StyleMuted.Render("answers: "+strings.Join(card.BlanksData.Blanks, ", ")))
+			rows = append(rows, tui.StyleMuted.Render("answers: "+strings.Join(card.BlanksData.Blanks, ", ")))
 		}
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)

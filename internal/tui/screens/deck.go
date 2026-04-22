@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
+	"github.com/lforato/gocards/internal/tui"
 )
 
 type deckLoadedMsg struct {
@@ -17,13 +18,13 @@ type deckLoadedMsg struct {
 }
 
 type DeckView struct {
-	store   *store.Store
-	deck    models.Deck
-	cards   []models.Card
-	dueIDs  map[int64]bool
-	cursor  int
-	loaded  bool
-	err     error
+	store         *store.Store
+	deck          models.Deck
+	cards         []models.Card
+	dueIDs        map[int64]bool
+	cursor        int
+	loaded        bool
+	err           error
 	confirmDelete bool
 }
 
@@ -47,7 +48,7 @@ func (d *DeckView) load() tea.Cmd {
 	}
 }
 
-func (d *DeckView) Update(msg tea.Msg) (Screen, tea.Cmd) {
+func (d *DeckView) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case deckLoadedMsg:
 		d.loaded = true
@@ -70,11 +71,11 @@ func (d *DeckView) Update(msg tea.Msg) (Screen, tea.Cmd) {
 					id := d.cards[d.cursor].ID
 					if err := d.store.DeleteCard(id); err != nil {
 						d.confirmDelete = false
-						return d, ToastErr("delete failed: " + err.Error())
+						return d, tui.ToastErr("delete failed: " + err.Error())
 					}
 				}
 				d.confirmDelete = false
-				return d, tea.Batch(Toast("card deleted"), d.load())
+				return d, tea.Batch(tui.Toast("card deleted"), d.load())
 			default:
 				d.confirmDelete = false
 				return d, nil
@@ -83,7 +84,7 @@ func (d *DeckView) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 		switch m.String() {
 		case "esc", "backspace":
-			return d, func() tea.Msg { return NavMsg{Pop: true} }
+			return d, func() tea.Msg { return tui.NavMsg{Pop: true} }
 		case "q":
 			return d, tea.Quit
 		case "up", "k":
@@ -98,15 +99,15 @@ func (d *DeckView) Update(msg tea.Msg) (Screen, tea.Cmd) {
 				}
 			}
 			if dueCount == 0 {
-				return d, ToastErr("nothing due right now")
+				return d, tui.ToastErr("nothing due right now")
 			}
-			return d, func() tea.Msg { return NavMsg{To: NewStudy(d.store, d.deck)} }
+			return d, func() tea.Msg { return tui.NavMsg{To: NewStudy(d.store, d.deck)} }
 		case "n":
-			return d, func() tea.Msg { return NavMsg{To: NewCreate(d.store, d.deck.ID)} }
+			return d, func() tea.Msg { return tui.NavMsg{To: NewCreate(d.store, d.deck.ID)} }
 		case "enter", "e":
 			if d.cursor < len(d.cards) {
 				card := d.cards[d.cursor]
-				return d, func() tea.Msg { return NavMsg{To: NewEdit(d.store, card)} }
+				return d, func() tea.Msg { return tui.NavMsg{To: NewEdit(d.store, card)} }
 			}
 		case "d", "delete", "x":
 			if d.cursor < len(d.cards) {
@@ -122,10 +123,10 @@ func (d *DeckView) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 func (d *DeckView) View() string {
 	if !d.loaded {
-		return StyleMuted.Render("loading deck…")
+		return tui.StyleMuted.Render("loading deck…")
 	}
 	if d.err != nil {
-		return StyleDanger.Render("error: " + d.err.Error())
+		return tui.StyleDanger.Render("error: " + d.err.Error())
 	}
 
 	color := colorBullet(d.deck.Color)
@@ -137,34 +138,34 @@ func (d *DeckView) View() string {
 		}
 	}
 	header := lipgloss.JoinVertical(lipgloss.Left,
-		fmt.Sprintf("%s  %s", color, StyleTitle.Render(d.deck.Name)),
-		StyleMuted.Render(d.deck.Description),
-		StyleMuted.Render(fmt.Sprintf("%s  ·  %s due",
+		fmt.Sprintf("%s  %s", color, tui.StyleTitle.Render(d.deck.Name)),
+		tui.StyleMuted.Render(d.deck.Description),
+		tui.StyleMuted.Render(fmt.Sprintf("%s  ·  %s due",
 			pluralize(len(d.cards), "card", "cards"),
-			StylePrimary.Render(fmt.Sprintf("%d", dueCount)),
+			tui.StylePrimary.Render(fmt.Sprintf("%d", dueCount)),
 		)),
 	)
 
 	// card list
 	rows := []string{}
 	if len(d.cards) == 0 {
-		rows = append(rows, StyleMuted.Render("no cards yet — press 'n' to add some"))
+		rows = append(rows, tui.StyleMuted.Render("no cards yet — press 'n' to add some"))
 	}
 	for i, c := range d.cards {
 		sel := i == d.cursor
-		style := lipgloss.NewStyle().Foreground(ColorFg)
+		style := lipgloss.NewStyle().Foreground(tui.ColorFg)
 		if sel {
-			style = StyleSelected
+			style = tui.StyleSelected
 		}
 		due := "  "
 		if d.dueIDs[c.ID] {
-			due = StylePrimary.Render("● ")
+			due = tui.StylePrimary.Render("● ")
 		}
 		rows = append(rows, fmt.Sprintf("%s%s%s  %s  %s",
 			selectionPrefix(sel),
 			due,
 			cardTypeBadge(c.Type),
-			StyleMuted.Render(fmt.Sprintf("(%s)", c.Language)),
+			tui.StyleMuted.Render(fmt.Sprintf("(%s)", c.Language)),
 			style.Render(truncate(flat(c.Prompt), 80)),
 		))
 	}
@@ -175,7 +176,7 @@ func (d *DeckView) View() string {
 			"",
 			lipgloss.JoinVertical(lipgloss.Left, rows...),
 			"",
-			StyleDanger.Render(fmt.Sprintf("delete card %d? y/N", d.cards[d.cursor].ID)),
+			tui.StyleDanger.Render(fmt.Sprintf("delete card %d? y/N", d.cards[d.cursor].ID)),
 		)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left,

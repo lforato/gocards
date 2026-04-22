@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"context"
@@ -17,6 +17,7 @@ import (
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/srs"
 	"github.com/lforato/gocards/internal/store"
+	"github.com/lforato/gocards/internal/tui"
 )
 
 type studyStage int
@@ -166,7 +167,7 @@ func (s *Study) editorHeight() int {
 	return max(5, s.bodyHeight()-studyRightLabel-studyPromptChrome-2)
 }
 
-func (s *Study) Update(msg tea.Msg) (Screen, tea.Cmd) {
+func (s *Study) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case tea.WindowSizeMsg:
 		s.w, s.h = m.Width, m.Height
@@ -177,7 +178,7 @@ func (s *Study) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 	case studyLoadedMsg:
 		if m.err != nil {
-			return s, ToastErr("study load: " + m.err.Error())
+			return s, tui.ToastErr("study load: " + m.err.Error())
 		}
 		s.cards = m.cards
 		s.session = m.session
@@ -254,7 +255,7 @@ func (s *Study) forwardToEmbedded(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (s *Study) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
+func (s *Study) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	card := s.current()
 
 	// Code/exp cards in the question stage route keys to the inline vim
@@ -297,7 +298,7 @@ func (s *Study) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 	return s, nil
 }
 
-func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (Screen, tea.Cmd) {
+func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (tui.Screen, tea.Cmd) {
 	switch card.Type {
 	case models.CardMCQ:
 		return s.handleMCQKey(m, card)
@@ -308,7 +309,7 @@ func (s *Study) handleQuestionKey(m tea.KeyMsg, card *models.Card) (Screen, tea.
 	return s, nil
 }
 
-func (s *Study) handleAnsweredKey(m tea.KeyMsg, card *models.Card) (Screen, tea.Cmd) {
+func (s *Study) handleAnsweredKey(m tea.KeyMsg, card *models.Card) (tui.Screen, tea.Cmd) {
 	switch m.String() {
 	case "1", "2", "3", "4", "5":
 		if card.Type == models.CardCode || card.Type == models.CardExp {
@@ -345,7 +346,7 @@ func (s *Study) recordReview(grade int) tea.Cmd {
 	}
 	r := srs.CalculateNext(grade, ease, interval)
 	if _, err := s.store.CreateReview(card.ID, grade, r.Ease, r.Interval, r.NextDue); err != nil {
-		return ToastErr("review save failed: " + err.Error())
+		return tui.ToastErr("review save failed: " + err.Error())
 	}
 	if s.session != nil {
 		cr := s.idx + 1
@@ -366,7 +367,7 @@ func (s *Study) advance() tea.Cmd {
 
 func (s *Study) endAndPop() tea.Cmd {
 	s.markSessionEnded()
-	return func() tea.Msg { return NavMsg{Pop: true} }
+	return func() tea.Msg { return tui.NavMsg{Pop: true} }
 }
 
 func (s *Study) markSessionEnded() {
@@ -379,7 +380,7 @@ func (s *Study) markSessionEnded() {
 
 func (s *Study) View() string {
 	if s.cards == nil {
-		return StyleMuted.Render("loading…")
+		return tui.StyleMuted.Render("loading…")
 	}
 	if s.stage == stageDone || len(s.cards) == 0 {
 		return s.viewDone()
@@ -391,9 +392,9 @@ func (s *Study) View() string {
 	}
 
 	header := lipgloss.JoinHorizontal(lipgloss.Top,
-		StyleTitle.Render(s.deck.Name),
+		tui.StyleTitle.Render(s.deck.Name),
 		"   ",
-		StyleMuted.Render(fmt.Sprintf("card %d / %d", s.idx+1, len(s.cards))),
+		tui.StyleMuted.Render(fmt.Sprintf("card %d / %d", s.idx+1, len(s.cards))),
 	)
 
 	var body string
@@ -407,7 +408,7 @@ func (s *Study) View() string {
 	case models.CardExp:
 		body = s.viewExp(card)
 	default:
-		body = StyleMuted.Render("(unknown card type)")
+		body = tui.StyleMuted.Render("(unknown card type)")
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, "", body)
@@ -415,9 +416,9 @@ func (s *Study) View() string {
 
 func (s *Study) viewDone() string {
 	if len(s.cards) == 0 {
-		return StyleMuted.Render("nothing due — check back later")
+		return tui.StyleMuted.Render("nothing due — check back later")
 	}
-	return StylePrimary.Render("🎉 session complete")
+	return tui.StylePrimary.Render("🎉 session complete")
 }
 
 func (s *Study) HelpKeys() []string {

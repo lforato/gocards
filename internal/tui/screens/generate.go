@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"github.com/lforato/gocards/internal/ai"
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
+	"github.com/lforato/gocards/internal/tui"
 )
 
 // chatSubmitMsg is emitted by the vim chat input's ctrl+s binding. It carries
@@ -35,13 +36,13 @@ type AIGenerate struct {
 	history []models.GradingMessage
 
 	// transient streaming state
-	pending    string // assistant's in-progress reply
-	streaming  bool
-	ctx        context.Context
-	cancel     context.CancelFunc
-	streamCh   <-chan ai.Event
-	spin       spinner.Model
-	sendErr    error
+	pending   string // assistant's in-progress reply
+	streaming bool
+	ctx       context.Context
+	cancel    context.CancelFunc
+	streamCh  <-chan ai.Event
+	spin      spinner.Model
+	sendErr   error
 
 	// chat UI
 	vp    viewport.Model
@@ -56,11 +57,11 @@ type AIGenerate struct {
 	pickerCursor int
 
 	// card review queue
-	proposed     []store.CardInput
-	reviewIdx    int
-	reviewing    bool // true when the user is approving cards
-	accepted     []store.CardInput
-	justSavedN   int // transient: rows saved on last flush, shown as a status line
+	proposed   []store.CardInput
+	reviewIdx  int
+	reviewing  bool // true when the user is approving cards
+	accepted   []store.CardInput
+	justSavedN int // transient: rows saved on last flush, shown as a status line
 
 	// screen size
 	w, h int
@@ -127,7 +128,7 @@ func (g *AIGenerate) loadDecks() tea.Cmd {
 	}
 }
 
-func (g *AIGenerate) Update(msg tea.Msg) (Screen, tea.Cmd) {
+func (g *AIGenerate) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case tea.WindowSizeMsg:
 		g.w = m.Width
@@ -189,10 +190,10 @@ func (g *AIGenerate) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	case cardsSavedMsg:
 		g.accepted = nil
 		if m.err != nil {
-			return g, ToastErr("save failed: " + m.err.Error())
+			return g, tui.ToastErr("save failed: " + m.err.Error())
 		}
 		g.justSavedN = m.n
-		return g, Toast(fmt.Sprintf("saved %d card%s to %s", m.n, plural(m.n), g.deck.Name))
+		return g, tui.Toast(fmt.Sprintf("saved %d card%s to %s", m.n, plural(m.n), g.deck.Name))
 
 	case chatSubmitMsg:
 		return g.submitChat(m.content)
@@ -213,7 +214,7 @@ func (g *AIGenerate) Update(msg tea.Msg) (Screen, tea.Cmd) {
 // submitChat persists the user message, clears the input, and kicks off the
 // streaming AI reply. Shared between the ctrl+s binding and, historically,
 // the enter keypath (now unused).
-func (g *AIGenerate) submitChat(text string) (Screen, tea.Cmd) {
+func (g *AIGenerate) submitChat(text string) (tui.Screen, tea.Cmd) {
 	text = strings.TrimSpace(text)
 	if text == "" || g.streaming {
 		return g, nil
@@ -227,7 +228,7 @@ func (g *AIGenerate) submitChat(text string) (Screen, tea.Cmd) {
 	return g, g.startStream()
 }
 
-func (g *AIGenerate) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
+func (g *AIGenerate) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	key := m.String()
 
 	// Overlays/review consume keys first.
@@ -262,7 +263,7 @@ func (g *AIGenerate) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 		if g.cancel != nil {
 			g.cancel()
 		}
-		return g, func() tea.Msg { return NavMsg{Pop: true} }
+		return g, func() tea.Msg { return tui.NavMsg{Pop: true} }
 	}
 
 	// Everything else goes to vimtea. ctrl+s is wired as a binding that
@@ -272,7 +273,7 @@ func (g *AIGenerate) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 	return g, cmd
 }
 
-func (g *AIGenerate) handlePickerKey(m tea.KeyMsg) (Screen, tea.Cmd) {
+func (g *AIGenerate) handlePickerKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	switch m.String() {
 	case "up", "k":
 		g.pickerCursor = cursorUp(g.pickerCursor)
@@ -287,7 +288,7 @@ func (g *AIGenerate) handlePickerKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 	return g, nil
 }
 
-func (g *AIGenerate) handleReviewKey(m tea.KeyMsg) (Screen, tea.Cmd) {
+func (g *AIGenerate) handleReviewKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	switch m.String() {
 	case "a", "y":
 		if g.reviewIdx < len(g.proposed) {
@@ -401,9 +402,9 @@ func (g *AIGenerate) refreshTranscript() {
 func formatChatTurn(role, content string, width int) string {
 	var tag string
 	if role == "assistant" {
-		tag = StyleAccent.Render("claude ›")
+		tag = tui.StyleAccent.Render("claude ›")
 	} else {
-		tag = StylePrimary.Render("you ›")
+		tag = tui.StylePrimary.Render("you ›")
 	}
 	body := lipgloss.NewStyle().Width(max(20, width)).Render(content)
 	return tag + "\n" + body
@@ -417,22 +418,22 @@ func (g *AIGenerate) View() string {
 		return g.viewReview()
 	}
 
-	deckLine := StyleMuted.Render("adding to ") +
-		StyleAccent.Render(g.deck.Name) +
-		"  " + StyleMuted.Render("· ctrl+d to change")
+	deckLine := tui.StyleMuted.Render("adding to ") +
+		tui.StyleAccent.Render(g.deck.Name) +
+		"  " + tui.StyleMuted.Render("· ctrl+d to change")
 
 	statusLine := ""
 	switch {
 	case g.streaming:
-		statusLine = g.spin.View() + StyleMuted.Render(" thinking… (enter to wait)")
+		statusLine = g.spin.View() + tui.StyleMuted.Render(" thinking… (enter to wait)")
 	case g.sendErr != nil:
-		statusLine = StyleDanger.Render(g.sendErr.Error())
+		statusLine = tui.StyleDanger.Render(g.sendErr.Error())
 	}
 
 	inputW := max(20, g.w-2)
 	var rawInput string
 	if g.streaming {
-		rawInput = StyleMuted.Render("(waiting for Claude…)")
+		rawInput = tui.StyleMuted.Render("(waiting for Claude…)")
 		for i := 1; i < g.inputH; i++ {
 			rawInput += "\n"
 		}
@@ -441,14 +442,14 @@ func (g *AIGenerate) View() string {
 	}
 	// Colour the border by vim mode so the user always knows what state the
 	// input is in — matches the codeedit convention.
-	borderColor := ColorBorder
+	borderColor := tui.ColorBorder
 	switch g.input.GetMode() {
 	case vimtea.ModeInsert:
-		borderColor = ColorSuccess
+		borderColor = tui.ColorSuccess
 	case vimtea.ModeVisual:
-		borderColor = ColorPrimary
+		borderColor = tui.ColorPrimary
 	case vimtea.ModeCommand:
-		borderColor = ColorWarn
+		borderColor = tui.ColorWarn
 	}
 	inputBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -469,11 +470,11 @@ func (g *AIGenerate) View() string {
 func (g *AIGenerate) viewReview() string {
 	total := len(g.proposed)
 	accepted := len(g.accepted)
-	header := StyleTitle.Render(fmt.Sprintf("Review card %d / %d", g.reviewIdx+1, total)) + "  " +
-		StyleMuted.Render(fmt.Sprintf("(%d accepted so far · adding to %s)", accepted, g.deck.Name))
+	header := tui.StyleTitle.Render(fmt.Sprintf("Review card %d / %d", g.reviewIdx+1, total)) + "  " +
+		tui.StyleMuted.Render(fmt.Sprintf("(%d accepted so far · adding to %s)", accepted, g.deck.Name))
 
 	if g.reviewIdx >= len(g.proposed) {
-		return StyleMuted.Render("no more cards")
+		return tui.StyleMuted.Render("no more cards")
 	}
 	card := g.proposed[g.reviewIdx]
 	w := g.w
@@ -489,14 +490,14 @@ func (g *AIGenerate) viewReview() string {
 }
 
 func (g *AIGenerate) viewPicker() string {
-	header := StyleTitle.Render("Change deck")
+	header := tui.StyleTitle.Render("Change deck")
 	var rows []string
 	rows = append(rows, header, "")
 	for i, d := range g.pickerDecks {
 		sel := i == g.pickerCursor
 		name := d.Name
 		if sel {
-			name = StyleSelected.Render(name)
+			name = tui.StyleSelected.Render(name)
 		}
 		rows = append(rows, fmt.Sprintf("%s%s  %s", selectionPrefix(sel), colorBullet(d.Color), name))
 	}
@@ -518,13 +519,13 @@ func (g *AIGenerate) HelpKeys() []string {
 // aiCardDTO mirrors the JSON schema Claude is asked to emit inside each
 // <card>...</card> block.
 type aiCardDTO struct {
-	Type           string              `json:"type"`
-	Language       string              `json:"language"`
-	Prompt         string              `json:"prompt"`
-	ExpectedAnswer string              `json:"expected_answer"`
-	InitialCode    string              `json:"initial_code"`
-	Choices        []models.Choice     `json:"choices"`
-	BlanksData     *models.BlankData   `json:"blanks_data"`
+	Type           string            `json:"type"`
+	Language       string            `json:"language"`
+	Prompt         string            `json:"prompt"`
+	ExpectedAnswer string            `json:"expected_answer"`
+	InitialCode    string            `json:"initial_code"`
+	Choices        []models.Choice   `json:"choices"`
+	BlanksData     *models.BlankData `json:"blanks_data"`
 }
 
 var cardTagRe = regexp.MustCompile(`(?s)<card>(.*?)</card>`)
@@ -580,30 +581,30 @@ func extractProposedCards(reply string) []store.CardInput {
 func previewCard(in store.CardInput, width int) string {
 	var rows []string
 	rows = append(rows,
-		StyleMuted.Render("type")+"  "+typeBadge(in.Type, true)+"   "+
-			StyleMuted.Render("lang")+"  "+in.Language,
+		tui.StyleMuted.Render("type")+"  "+typeBadge(in.Type, true)+"   "+
+			tui.StyleMuted.Render("lang")+"  "+in.Language,
 		"",
-		StyleMuted.Render("prompt"),
+		tui.StyleMuted.Render("prompt"),
 		previewBlock(in.Prompt, "(empty)", width),
 	)
 	switch in.Type {
 	case models.CardMCQ:
-		rows = append(rows, "", StyleMuted.Render("choices"))
+		rows = append(rows, "", tui.StyleMuted.Render("choices"))
 		for _, ch := range in.Choices {
 			mark := "[ ]"
 			if ch.IsCorrect {
-				mark = StyleSuccess.Render("[x]")
+				mark = tui.StyleSuccess.Render("[x]")
 			}
 			rows = append(rows, fmt.Sprintf("  %s %s. %s", mark, ch.ID, ch.Text))
 		}
 	case models.CardFill:
 		if in.BlanksData != nil {
-			rows = append(rows, "", StyleMuted.Render("template"), previewBlock(in.BlanksData.Template, "(empty)", width))
-			rows = append(rows, "", StyleMuted.Render("blanks: "+strings.Join(in.BlanksData.Blanks, ", ")))
+			rows = append(rows, "", tui.StyleMuted.Render("template"), previewBlock(in.BlanksData.Template, "(empty)", width))
+			rows = append(rows, "", tui.StyleMuted.Render("blanks: "+strings.Join(in.BlanksData.Blanks, ", ")))
 		}
 	case models.CardCode, models.CardExp:
 		if in.ExpectedAnswer != "" {
-			rows = append(rows, "", StyleMuted.Render("expected answer"), previewBlock(in.ExpectedAnswer, "", width))
+			rows = append(rows, "", tui.StyleMuted.Render("expected answer"), previewBlock(in.ExpectedAnswer, "", width))
 		}
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
@@ -633,7 +634,7 @@ func previewBlock(content, placeholder string, totalWidth int) string {
 	body := lipgloss.NewStyle().Width(innerW).Render(strings.Join(lines, "\n"))
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorBorder).
+		BorderForeground(tui.ColorBorder).
 		Padding(0, 1).
 		Width(innerW + 2).
 		Render(body)

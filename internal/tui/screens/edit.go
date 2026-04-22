@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"fmt"
@@ -11,6 +11,8 @@ import (
 
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
+	"github.com/lforato/gocards/internal/tui"
+	"github.com/lforato/gocards/internal/tui/widgets"
 )
 
 type editField int
@@ -35,7 +37,7 @@ type Edit struct {
 	language textinput.Model
 
 	// inline code editor modal (used for prompt/initial code/expected/template)
-	editor       CodeEditor
+	editor       widgets.CodeEditor
 	editorActive bool
 	editingField editField
 
@@ -114,7 +116,7 @@ func (e *Edit) updateFocus() {
 	}
 }
 
-func (e *Edit) Update(msg tea.Msg) (Screen, tea.Cmd) {
+func (e *Edit) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	if sz, ok := msg.(tea.WindowSizeMsg); ok {
 		e.w = sz.Width
 		e.h = sz.Height
@@ -175,13 +177,13 @@ func (e *Edit) commitEditor() {
 
 func (e *Edit) openEditor(field editField, content, lang, title string) tea.Cmd {
 	e.editingField = field
-	e.editor = NewCodeEditor(title, content, lang, e.editorWidth(), e.editorHeight())
+	e.editor = widgets.NewCodeEditor(title, content, lang, e.editorWidth(), e.editorHeight())
 	e.editorActive = true
 	return e.editor.Init()
 }
 
 // editorWidth / editorHeight return the dimensions passed into
-// NewCodeEditor / SetSize. CodeEditor's outer rendered size is (width+2) ×
+// widgets.NewCodeEditor / SetSize. widgets.CodeEditor's outer rendered size is (width+2) ×
 // height because Border adds 1 cell on each horizontal side, so we subtract
 // 2 from the available screen width to keep the box from overflowing.
 func (e *Edit) editorWidth() int {
@@ -198,10 +200,10 @@ func (e *Edit) editorHeight() int {
 	return max(6, e.h)
 }
 
-func (e *Edit) updateKey(m tea.KeyMsg) (Screen, tea.Cmd) {
+func (e *Edit) updateKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	switch m.String() {
 	case "esc":
-		return e, func() tea.Msg { return NavMsg{Pop: true} }
+		return e, func() tea.Msg { return tui.NavMsg{Pop: true} }
 	case "ctrl+s":
 		return e, e.save()
 	}
@@ -267,7 +269,7 @@ func (e *Edit) updateKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 	return e, nil
 }
 
-func (e *Edit) updateChoicesKey(m tea.KeyMsg) (Screen, tea.Cmd) {
+func (e *Edit) updateChoicesKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	choices := e.card.Choices
 	switch m.String() {
 	case "tab":
@@ -291,7 +293,7 @@ func (e *Edit) updateChoicesKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 		return e, nil
 	case "a":
 		if len(choices) >= 26 {
-			return e, ToastErr("max 26 choices")
+			return e, tui.ToastErr("max 26 choices")
 		}
 		choices = append(choices, models.Choice{})
 		e.card.Choices = choices
@@ -323,7 +325,7 @@ func (e *Edit) beginChoiceEdit(idx int) {
 	e.choiceInput.Focus()
 }
 
-func (e *Edit) updateChoiceEdit(m tea.KeyMsg) (Screen, tea.Cmd) {
+func (e *Edit) updateChoiceEdit(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	switch m.String() {
 	case "esc":
 		e.choiceEditing = false
@@ -350,19 +352,19 @@ func (e *Edit) save() tea.Cmd {
 		InitialCode: e.card.InitialCode,
 	}
 	if strings.TrimSpace(in.Prompt) == "" {
-		return ToastErr("question required")
+		return tui.ToastErr("question required")
 	}
 
 	switch e.card.Type {
 	case models.CardCode, models.CardExp:
 		if strings.TrimSpace(e.card.ExpectedAnswer) == "" {
-			return ToastErr("expected answer required")
+			return tui.ToastErr("expected answer required")
 		}
 		in.ExpectedAnswer = e.card.ExpectedAnswer
 
 	case models.CardMCQ:
 		if len(e.card.Choices) < 2 {
-			return ToastErr("add at least 2 choices")
+			return tui.ToastErr("add at least 2 choices")
 		}
 		anyCorrect := false
 		for _, ch := range e.card.Choices {
@@ -372,7 +374,7 @@ func (e *Edit) save() tea.Cmd {
 			}
 		}
 		if !anyCorrect {
-			return ToastErr("mark at least one choice correct")
+			return tui.ToastErr("mark at least one choice correct")
 		}
 		normalized := make([]models.Choice, len(e.card.Choices))
 		for i, ch := range e.card.Choices {
@@ -386,12 +388,12 @@ func (e *Edit) save() tea.Cmd {
 
 	case models.CardFill:
 		if e.card.BlanksData == nil || strings.TrimSpace(e.card.BlanksData.Template) == "" {
-			return ToastErr("template required")
+			return tui.ToastErr("template required")
 		}
 		tmpl := e.card.BlanksData.Template
 		matches := blankRe.FindAllStringSubmatch(tmpl, -1)
 		if len(matches) == 0 {
-			return ToastErr("template needs at least one {{blank}}")
+			return tui.ToastErr("template needs at least one {{blank}}")
 		}
 		blanks := make([]string, 0, len(matches))
 		for _, mm := range matches {
@@ -403,18 +405,18 @@ func (e *Edit) save() tea.Cmd {
 	if e.card.ID == 0 {
 		cs, err := e.store.BulkCreateCards(e.card.DeckID, []store.CardInput{in})
 		if err != nil {
-			return ToastErr("save failed: " + err.Error())
+			return tui.ToastErr("save failed: " + err.Error())
 		}
 		if len(cs) > 0 {
 			e.card = cs[0]
 		}
-		return tea.Batch(Toast("card created"), func() tea.Msg { return NavMsg{Pop: true} })
+		return tea.Batch(tui.Toast("card created"), func() tea.Msg { return tui.NavMsg{Pop: true} })
 	}
 
 	if _, err := e.store.UpdateCard(e.card.ID, in); err != nil {
-		return ToastErr("update failed: " + err.Error())
+		return tui.ToastErr("update failed: " + err.Error())
 	}
-	return tea.Batch(Toast("card saved"), func() tea.Msg { return NavMsg{Pop: true} })
+	return tea.Batch(tui.Toast("card saved"), func() tea.Msg { return tui.NavMsg{Pop: true} })
 }
 
 func (e *Edit) View() string {
@@ -424,9 +426,9 @@ func (e *Edit) View() string {
 
 	label := func(s string, sel bool) string {
 		if sel {
-			return StyleSelected.Render("▶ " + s)
+			return tui.StyleSelected.Render("▶ " + s)
 		}
-		return StyleMuted.Render("  " + s)
+		return tui.StyleMuted.Render("  " + s)
 	}
 
 	title := "New card"
@@ -436,16 +438,16 @@ func (e *Edit) View() string {
 
 	typeLine := fmt.Sprintf("%s  %s",
 		typeBadge(e.card.Type, true),
-		StyleMuted.Render("(1 code · 2 mcq · 3 fill · 4 exp)"),
+		tui.StyleMuted.Render("(1 code · 2 mcq · 3 fill · 4 exp)"),
 	)
 
 	var rows []string
-	rows = append(rows, StyleTitle.Render(title), "")
+	rows = append(rows, tui.StyleTitle.Render(title), "")
 
 	if e.card.Type == models.CardCode {
 		// Type is a muted header (not a focusable field) for code cards.
 		rows = append(rows,
-			StyleMuted.Render("Type"),
+			tui.StyleMuted.Render("Type"),
 			"  "+typeLine,
 			"",
 			label("Language", e.focus == fLanguage),
@@ -497,7 +499,7 @@ func (e *Edit) View() string {
 		rows = append(rows,
 			label("Template", e.focus == fTemplate),
 			previewBox(tmpl, "(empty — press enter to open vim)"),
-			StyleMuted.Render("  {{answer}} marks a blank"),
+			tui.StyleMuted.Render("  {{answer}} marks a blank"),
 			"",
 		)
 	}
@@ -523,25 +525,25 @@ func (e *Edit) HelpKeys() []string {
 
 func (e *Edit) viewChoices() string {
 	if len(e.card.Choices) == 0 && !e.choiceEditing {
-		return StyleMuted.Render("  (no choices — press a to add)")
+		return tui.StyleMuted.Render("  (no choices — press a to add)")
 	}
 	var lines []string
 	for i, ch := range e.card.Choices {
 		sel := i == e.choiceCursor && e.focus == fChoices
 		mark := "[ ]"
 		if ch.IsCorrect {
-			mark = StyleSuccess.Render("[x]")
+			mark = tui.StyleSuccess.Render("[x]")
 		}
 		id := string(rune('a' + i))
 		text := ch.Text
 		if e.choiceEditing && e.choiceEditIdx == i {
 			text = e.choiceInput.View()
 		} else if text == "" {
-			text = StyleMuted.Render("(empty)")
+			text = tui.StyleMuted.Render("(empty)")
 		}
 		prefix := "  "
 		if sel {
-			prefix = StylePrimary.Render("▶ ")
+			prefix = tui.StylePrimary.Render("▶ ")
 		}
 		lines = append(lines, fmt.Sprintf("%s%s %s. %s", prefix, mark, id, text))
 	}
@@ -559,18 +561,18 @@ func previewBox(content, placeholder string) string {
 	if strings.TrimSpace(content) == "" {
 		return lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(ColorBorder).
+			BorderForeground(tui.ColorBorder).
 			Padding(0, 1).
-			Foreground(ColorMuted).
+			Foreground(tui.ColorMuted).
 			Render(placeholder)
 	}
 	lines := strings.Split(content, "\n")
 	if len(lines) > 10 {
-		lines = append(lines[:10], StyleMuted.Render("…"))
+		lines = append(lines[:10], tui.StyleMuted.Render("…"))
 	}
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorBorder).
+		BorderForeground(tui.ColorBorder).
 		Padding(0, 1).
 		Render(strings.Join(lines, "\n"))
 }

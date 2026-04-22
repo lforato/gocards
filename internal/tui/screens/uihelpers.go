@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lforato/gocards/internal/models"
+	"github.com/lforato/gocards/internal/tui"
 )
 
 // cursorUp / cursorDown / cycleFocus centralize the bounds math every list-y
@@ -30,7 +31,6 @@ func cursorDown(cursor, count int) int {
 }
 
 // cycleFocus advances a ring-buffer cursor by delta, wrapping at both ends.
-// Used by forms and paged pickers.
 func cycleFocus(focus, delta, count int) int {
 	if count <= 0 {
 		return 0
@@ -38,38 +38,52 @@ func cycleFocus(focus, delta, count int) int {
 	return (focus + delta%count + count) % count
 }
 
-// selectionPrefix is the leading gutter used by every selectable list row:
-// a highlighted "▶ " when selected, two spaces otherwise.
+// selectionPrefix is the leading gutter used by every selectable list row.
 func selectionPrefix(selected bool) string {
 	if selected {
-		return StylePrimary.Render("▶ ")
+		return tui.StylePrimary.Render("▶ ")
 	}
 	return "  "
 }
 
-// colorBullet is the little "●" rendered in the deck's accent color.
 func colorBullet(hex string) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(hex)).Render("●")
 }
 
-// cardTypeColor returns the theme color assigned to a card type. Falls back to
-// the muted palette for unknown values so new types don't crash rendering.
 func cardTypeColor(t models.CardType) lipgloss.Color {
 	switch t {
 	case models.CardMCQ:
-		return ColorAccent
+		return tui.ColorAccent
 	case models.CardCode:
-		return ColorSuccess
+		return tui.ColorSuccess
 	case models.CardFill:
-		return ColorWarn
+		return tui.ColorWarn
 	case models.CardExp:
-		return ColorPrimary
+		return tui.ColorPrimary
 	}
-	return ColorMuted
+	return tui.ColorMuted
 }
 
-// cardTypeBadge renders "[type]" with the type's theme color. Used in lists.
 func cardTypeBadge(t models.CardType) string {
 	return lipgloss.NewStyle().Foreground(cardTypeColor(t)).Render(fmt.Sprintf("[%s]", t))
 }
 
+// truncate clips s to at most n runes, appending … when truncation happens.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	if n <= 1 {
+		return string(r[:n])
+	}
+	return string(r[:n-1]) + "…"
+}
+
+// pluralize returns "N singular" when N == 1 and "N plural" otherwise.
+func pluralize(n int, singular, plural string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, singular)
+	}
+	return fmt.Sprintf("%d %s", n, plural)
+}

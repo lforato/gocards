@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"fmt"
@@ -8,6 +8,8 @@ import (
 
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
+	"github.com/lforato/gocards/internal/tui"
+	"github.com/lforato/gocards/internal/tui/widgets"
 )
 
 type dashboardStats struct {
@@ -75,7 +77,7 @@ func (d *Dashboard) load() tea.Cmd {
 	}
 }
 
-func (d *Dashboard) Update(msg tea.Msg) (Screen, tea.Cmd) {
+func (d *Dashboard) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 
 	case tea.WindowSizeMsg:
@@ -96,11 +98,11 @@ func (d *Dashboard) Update(msg tea.Msg) (Screen, tea.Cmd) {
 			d.loaded = false
 			return d, d.load()
 		case "n":
-			return d, func() tea.Msg { return NavMsg{To: NewCreate(d.store, 0)} }
+			return d, func() tea.Msg { return tui.NavMsg{To: NewCreate(d.store, 0)} }
 		case "g":
 			return d, d.openGenerate()
 		case "s":
-			return d, func() tea.Msg { return NavMsg{To: NewSettings(d.store)} }
+			return d, func() tea.Msg { return tui.NavMsg{To: NewSettings(d.store)} }
 		case "up", "k":
 			d.cursor = cursorUp(d.cursor)
 		case "down", "j":
@@ -112,7 +114,7 @@ func (d *Dashboard) Update(msg tea.Msg) (Screen, tea.Cmd) {
 				deck := d.stats.decks[d.cursor-3]
 				if deck.DueCount > 0 {
 					return d, func() tea.Msg {
-						return NavMsg{To: NewStudy(d.store, deck.Deck)}
+						return tui.NavMsg{To: NewStudy(d.store, deck.Deck)}
 					}
 				}
 			}
@@ -124,18 +126,18 @@ func (d *Dashboard) Update(msg tea.Msg) (Screen, tea.Cmd) {
 func (d *Dashboard) activate() tea.Cmd {
 	switch d.cursor {
 	case 0:
-		return func() tea.Msg { return NavMsg{To: NewCreate(d.store, 0)} }
+		return func() tea.Msg { return tui.NavMsg{To: NewCreate(d.store, 0)} }
 	case 1:
 		return d.openGenerate()
 	case 2:
-		return func() tea.Msg { return NavMsg{To: NewSettings(d.store)} }
+		return func() tea.Msg { return tui.NavMsg{To: NewSettings(d.store)} }
 	default:
 		idx := d.cursor - 3
 		if idx < 0 || idx >= len(d.stats.decks) {
 			return nil
 		}
 		deck := d.stats.decks[idx]
-		return func() tea.Msg { return NavMsg{To: NewDeckView(d.store, deck.Deck)} }
+		return func() tea.Msg { return tui.NavMsg{To: NewDeckView(d.store, deck.Deck)} }
 	}
 }
 
@@ -154,17 +156,17 @@ func (d *Dashboard) openGenerate() tea.Cmd {
 		deck = d.stats.decks[0].Deck
 	}
 	if deck.ID == 0 {
-		return ToastErr("create a deck first")
+		return tui.ToastErr("create a deck first")
 	}
-	return func() tea.Msg { return NavMsg{To: NewAIGenerate(d.store, deck)} }
+	return func() tea.Msg { return tui.NavMsg{To: NewAIGenerate(d.store, deck)} }
 }
 
 func (d *Dashboard) View() string {
 	if !d.loaded {
-		return StyleMuted.Render("loading…")
+		return tui.StyleMuted.Render("loading…")
 	}
 	if d.err != nil {
-		return StyleDanger.Render("error: " + d.err.Error())
+		return tui.StyleDanger.Render("error: " + d.err.Error())
 	}
 
 	s := d.stats
@@ -188,10 +190,10 @@ func (d *Dashboard) View() string {
 	heatInnerW := heatOuterW - 2 // subtract horizontal padding (1 each side)
 	heat := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorBorder).
+		BorderForeground(tui.ColorBorder).
 		Padding(0, 1).
 		Width(heatOuterW).
-		Render(Heatmap(s.activity, heatInnerW))
+		Render(widgets.Heatmap(s.activity, heatInnerW))
 
 	// Actions + decks list
 	var rows []string
@@ -199,23 +201,23 @@ func (d *Dashboard) View() string {
 	rows = append(rows, renderRow("🤖 Generate with AI", "g", d.cursor == 1))
 	rows = append(rows, renderRow("⚙ Settings", "s", d.cursor == 2))
 	rows = append(rows, "")
-	rows = append(rows, StyleMuted.Render(fmt.Sprintf("decks · %d", len(s.decks))))
+	rows = append(rows, tui.StyleMuted.Render(fmt.Sprintf("decks · %d", len(s.decks))))
 
 	for i, deck := range s.decks {
 		sel := d.cursor == i+3
 		name := deck.Name
 		if sel {
-			name = StyleSelected.Render(name)
+			name = tui.StyleSelected.Render(name)
 		}
 		due := ""
 		if deck.DueCount > 0 {
-			due = "  " + StylePrimary.Render(fmt.Sprintf("%d due", deck.DueCount))
+			due = "  " + tui.StylePrimary.Render(fmt.Sprintf("%d due", deck.DueCount))
 		}
 		rows = append(rows, fmt.Sprintf("%s%s %s  %s%s",
 			selectionPrefix(sel),
 			colorBullet(deck.Color),
 			name,
-			StyleMuted.Render(fmt.Sprintf("(%s)", pluralize(deck.CardCount, "card", "cards"))),
+			tui.StyleMuted.Render(fmt.Sprintf("(%s)", pluralize(deck.CardCount, "card", "cards"))),
 			due,
 		))
 	}
@@ -235,16 +237,16 @@ func (d *Dashboard) HelpKeys() []string {
 
 func statBox(label, value string, w int) string {
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		StyleMuted.Render(label),
-		lipgloss.NewStyle().Foreground(ColorFg).Bold(true).Render(value),
+		tui.StyleMuted.Render(label),
+		lipgloss.NewStyle().Foreground(tui.ColorFg).Bold(true).Render(value),
 	)
-	return StatCard.Width(w).Render(content)
+	return tui.StatCard.Width(w).Render(content)
 }
 
 func renderRow(text, key string, selected bool) string {
-	style := lipgloss.NewStyle().Foreground(ColorFg)
+	style := lipgloss.NewStyle().Foreground(tui.ColorFg)
 	if selected {
-		style = StyleSelected
+		style = tui.StyleSelected
 	}
-	return selectionPrefix(selected) + style.Render(text) + "  " + StyleMuted.Render("["+key+"]")
+	return selectionPrefix(selected) + style.Render(text) + "  " + tui.StyleMuted.Render("["+key+"]")
 }

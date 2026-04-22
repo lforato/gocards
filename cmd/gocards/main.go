@@ -9,6 +9,7 @@ import (
 	"github.com/lforato/gocards/internal/db"
 	"github.com/lforato/gocards/internal/store"
 	"github.com/lforato/gocards/internal/tui"
+	"github.com/lforato/gocards/internal/tui/screens"
 )
 
 func main() {
@@ -20,7 +21,7 @@ func main() {
 	defer conn.Close()
 
 	s := store.New(conn)
-	app := tui.NewApp(s)
+	app := tui.NewApp(s, screens.NewDashboard(s))
 
 	prog := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := prog.Run(); err != nil {

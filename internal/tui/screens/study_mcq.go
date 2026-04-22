@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"fmt"
@@ -7,11 +7,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lforato/gocards/internal/models"
+	"github.com/lforato/gocards/internal/tui"
 )
 
-func (s *Study) handleMCQKey(m tea.KeyMsg, card *models.Card) (Screen, tea.Cmd) {
+func (s *Study) handleMCQKey(m tea.KeyMsg, card *models.Card) (tui.Screen, tea.Cmd) {
 	if len(card.Choices) == 0 {
-		return s, ToastErr("card has no choices — skipping")
+		return s, tui.ToastErr("card has no choices — skipping")
 	}
 	if s.mcqCursor >= len(card.Choices) {
 		s.mcqCursor = 0
@@ -43,7 +44,7 @@ func (s *Study) viewMCQ(card *models.Card) string {
 		rows = append(rows, mcqChoiceRow(ch, i, s.mcqCursor, s.stage))
 	}
 	if s.stage == stageAnswered {
-		rows = append(rows, "", StylePrimary.Render(fmt.Sprintf("→ %s  (grade %d)", s.resultNote, s.resultGrade)))
+		rows = append(rows, "", tui.StylePrimary.Render(fmt.Sprintf("→ %s  (grade %d)", s.resultNote, s.resultGrade)))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
@@ -55,19 +56,19 @@ func mcqChoiceRow(ch models.Choice, idx, cursor int, stage studyStage) string {
 	selected := idx == cursor
 	prefix := "  "
 	if selected && stage == stageQuestion {
-		prefix = StylePrimary.Render("▶ ")
+		prefix = tui.StylePrimary.Render("▶ ")
 	}
 
 	label := fmt.Sprintf("%s. %s", ch.ID, ch.Text)
 	switch {
 	case stage == stageAnswered && ch.IsCorrect:
-		label = StyleSuccess.Render(label + "  ✓")
+		label = tui.StyleSuccess.Render(label + "  ✓")
 	case stage == stageAnswered && selected && !ch.IsCorrect:
-		label = StyleDanger.Render(label + "  ✗")
+		label = tui.StyleDanger.Render(label + "  ✗")
 	case stage == stageAnswered:
-		label = StyleMuted.Render(label)
+		label = tui.StyleMuted.Render(label)
 	case selected:
-		label = StyleSelected.Render(label)
+		label = tui.StyleSelected.Render(label)
 	}
 	return prefix + label
 }

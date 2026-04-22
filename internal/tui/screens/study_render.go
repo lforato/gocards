@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"regexp"
@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/lforato/gocards/internal/tui"
 )
 
 // renderPrompt formats a card prompt for display: plain text stays plain,
@@ -41,7 +43,7 @@ func renderPrompt(p string) string {
 func codeBox(s string) string {
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorBorder).
+		BorderForeground(tui.ColorBorder).
 		Foreground(lipgloss.Color("#d1d5db")).
 		Padding(0, 1).
 		Render(s)

@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
+	"github.com/lforato/gocards/internal/tui"
 )
 
 type createStep int
@@ -89,7 +90,7 @@ func (c *Create) loadDecks() tea.Cmd {
 	}
 }
 
-func (c *Create) Update(msg tea.Msg) (Screen, tea.Cmd) {
+func (c *Create) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case createDecksLoadedMsg:
 		c.decks = m.decks
@@ -123,9 +124,9 @@ func (c *Create) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	return c, cmd
 }
 
-func (c *Create) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
+func (c *Create) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	if m.String() == "esc" {
-		return c, func() tea.Msg { return NavMsg{Pop: true} }
+		return c, func() tea.Msg { return tui.NavMsg{Pop: true} }
 	}
 
 	switch c.step {
@@ -160,7 +161,7 @@ func (c *Create) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 			return c, nil
 		case "enter":
 			if c.newName.Value() == "" {
-				return c, ToastErr("deck name required")
+				return c, tui.ToastErr("deck name required")
 			}
 			color := strings.TrimSpace(c.newColor.Value())
 			if color == "" {
@@ -168,7 +169,7 @@ func (c *Create) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 			}
 			deck, err := c.store.CreateDeck(c.newName.Value(), c.newDesc.Value(), color)
 			if err != nil {
-				return c, ToastErr("create failed: " + err.Error())
+				return c, tui.ToastErr("create failed: " + err.Error())
 			}
 			c.targetDeck = deck
 			c.step = stepPickType
@@ -201,7 +202,7 @@ func (c *Create) handleKey(m tea.KeyMsg) (Screen, tea.Cmd) {
 				Type:     t,
 				Language: "javascript",
 			}
-			return c, func() tea.Msg { return NavMsg{To: NewEdit(c.store, draft)} }
+			return c, func() tea.Msg { return tui.NavMsg{To: NewEdit(c.store, draft)} }
 		}
 	}
 	return c, nil
@@ -229,22 +230,22 @@ func (c *Create) View() string {
 }
 
 func (c *Create) viewPickDeck() string {
-	rows := []string{StyleTitle.Render("New card — pick a deck"), ""}
+	rows := []string{tui.StyleTitle.Render("New card — pick a deck"), ""}
 	if len(c.decks) == 0 {
-		rows = append(rows, StyleMuted.Render("no decks yet"))
+		rows = append(rows, tui.StyleMuted.Render("no decks yet"))
 	}
 	for i, d := range c.decks {
 		sel := i == c.deckCursor
 		name := d.Name
 		if sel {
-			name = StyleSelected.Render(name)
+			name = tui.StyleSelected.Render(name)
 		}
 		rows = append(rows, fmt.Sprintf("%s%s  %s", selectionPrefix(sel), colorBullet(d.Color), name))
 	}
 	sel := c.deckCursor == len(c.decks)
 	label := "+ new deck"
 	if sel {
-		label = StyleSelected.Render(label)
+		label = tui.StyleSelected.Render(label)
 	}
 	rows = append(rows, selectionPrefix(sel)+label)
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
@@ -252,23 +253,23 @@ func (c *Create) viewPickDeck() string {
 
 func (c *Create) viewNewDeck() string {
 	rows := []string{
-		StyleTitle.Render("Create deck"), "",
-		StyleMuted.Render("Name"), c.newName.View(), "",
-		StyleMuted.Render("Description"), c.newDesc.View(), "",
-		StyleMuted.Render("Color (#hex)"), c.newColor.View(),
+		tui.StyleTitle.Render("Create deck"), "",
+		tui.StyleMuted.Render("Name"), c.newName.View(), "",
+		tui.StyleMuted.Render("Description"), c.newDesc.View(), "",
+		tui.StyleMuted.Render("Color (#hex)"), c.newColor.View(),
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func (c *Create) viewPickType() string {
-	title := StyleTitle.Render("New card — pick type")
+	title := tui.StyleTitle.Render("New card — pick type")
 	if c.targetDeck != nil {
-		title += "  " + StyleMuted.Render("→ "+c.targetDeck.Name)
+		title += "  " + tui.StyleMuted.Render("→ "+c.targetDeck.Name)
 	}
 	rows := []string{title, ""}
 	for i, t := range cardTypes {
 		sel := i == c.typeCursor
-		rows = append(rows, selectionPrefix(sel)+typeBadge(t, sel)+"  "+StyleMuted.Render(typeDescription(t)))
+		rows = append(rows, selectionPrefix(sel)+typeBadge(t, sel)+"  "+tui.StyleMuted.Render(typeDescription(t)))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }

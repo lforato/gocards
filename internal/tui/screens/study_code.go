@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 
 	"github.com/lforato/gocards/internal/ai"
 	"github.com/lforato/gocards/internal/models"
+	"github.com/lforato/gocards/internal/tui"
+	"github.com/lforato/gocards/internal/tui/widgets"
 )
 
 // codeSubmitMsg is emitted by the inline vimtea editor's ctrl+s binding and
@@ -23,7 +25,7 @@ func (s *Study) initCodeEditor(card *models.Card) tea.Cmd {
 	}
 	ed := vimtea.NewEditor(
 		vimtea.WithContent(initial),
-		vimtea.WithFileName("code"+langExt(card.Language)),
+		vimtea.WithFileName("code"+widgets.LangExt(card.Language)),
 		vimtea.WithEnableStatusBar(false),
 	)
 	ed.AddBinding(vimtea.KeyBinding{
@@ -39,7 +41,7 @@ func (s *Study) initCodeEditor(card *models.Card) tea.Cmd {
 	return ed.Init()
 }
 
-func (s *Study) handleCodeSubmit(m codeSubmitMsg) (Screen, tea.Cmd) {
+func (s *Study) handleCodeSubmit(m codeSubmitMsg) (tui.Screen, tea.Cmd) {
 	if s.stage != stageQuestion {
 		return s, nil
 	}
@@ -113,7 +115,7 @@ func (s *Study) viewCodeOrExp(card *models.Card, answer, label string) string {
 	}
 	rows := []string{renderPrompt(card.Prompt), ""}
 	if answer != "" {
-		rows = append(rows, StyleMuted.Render(label+":"), codeBox(answer), "")
+		rows = append(rows, tui.StyleMuted.Render(label+":"), codeBox(answer), "")
 	}
 	rows = append(rows, s.viewGrading()...)
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
@@ -138,7 +140,7 @@ func (s *Study) viewCodeQuestion(card *models.Card, editorLabel string) string {
 	return lipgloss.JoinVertical(lipgloss.Left,
 		prompt,
 		"",
-		StyleMuted.Render(editorLabel+":"),
+		tui.StyleMuted.Render(editorLabel+":"),
 		editorView,
 	)
 }
@@ -152,15 +154,15 @@ func (s *Study) viewGrading() []string {
 			s.spin.View() + " grading…",
 			"",
 			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
-				BorderForeground(ColorBorder).Padding(0, 1).Render(s.vp.View()),
+				BorderForeground(tui.ColorBorder).Padding(0, 1).Render(s.vp.View()),
 		}
 	case stageAnswered:
 		rows := []string{}
 		if s.graderErr != nil {
-			rows = append(rows, StyleDanger.Render(s.graderErr.Error()))
+			rows = append(rows, tui.StyleDanger.Render(s.graderErr.Error()))
 		}
-		rows = append(rows, StyleMuted.Render("grader:"), renderPrompt(s.grader), "",
-			StylePrimary.Render(fmt.Sprintf("grade: %d", s.graderGrade)))
+		rows = append(rows, tui.StyleMuted.Render("grader:"), renderPrompt(s.grader), "",
+			tui.StylePrimary.Render(fmt.Sprintf("grade: %d", s.graderGrade)))
 		return rows
 	}
 	return nil

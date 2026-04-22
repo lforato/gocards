@@ -1,4 +1,4 @@
-package tui
+package screens
 
 import (
 	"strconv"
@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lforato/gocards/internal/store"
+	"github.com/lforato/gocards/internal/tui"
 )
 
 type Settings struct {
@@ -51,12 +52,12 @@ func NewSettings(s *store.Store) *Settings {
 
 func (s *Settings) Init() tea.Cmd { return textinput.Blink }
 
-func (s *Settings) Update(msg tea.Msg) (Screen, tea.Cmd) {
+func (s *Settings) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case tea.KeyMsg:
 		switch m.String() {
 		case "esc":
-			return s, func() tea.Msg { return NavMsg{Pop: true} }
+			return s, func() tea.Msg { return tui.NavMsg{Pop: true} }
 		case "tab", "down":
 			s.fields[s.focus].Blur()
 			s.focus = cycleFocus(s.focus, 1, len(s.fields))
@@ -69,9 +70,9 @@ func (s *Settings) Update(msg tea.Msg) (Screen, tea.Cmd) {
 			return s, nil
 		case "ctrl+s":
 			if err := s.save(); err != nil {
-				return s, ToastErr("save failed: " + err.Error())
+				return s, tui.ToastErr("save failed: " + err.Error())
 			}
-			return s, Toast("settings saved")
+			return s, tui.Toast("settings saved")
 		}
 	}
 
@@ -101,9 +102,9 @@ func (s *Settings) save() error {
 }
 
 func (s *Settings) View() string {
-	rows := []string{StyleTitle.Render("Settings"), ""}
+	rows := []string{tui.StyleTitle.Render("Settings"), ""}
 	for i, ti := range s.fields {
-		label := StyleMuted.Render(s.labels[i])
+		label := tui.StyleMuted.Render(s.labels[i])
 		rows = append(rows, label, ti.View(), "")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
