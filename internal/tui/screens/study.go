@@ -46,14 +46,14 @@ type Study struct {
 	codeAnswer        string
 	explanationAnswer string
 
-	ctx         context.Context
-	cancel      context.CancelFunc
-	streamCh    <-chan ai.Event
-	spin        spinner.Model
-	vp          viewport.Model
-	grader      string
-	graderErr   error
-	graderGrade int
+	ctx           context.Context
+	cancel        context.CancelFunc
+	streamCh      <-chan ai.Event
+	spin          spinner.Model
+	gradeViewport viewport.Model
+	graderBuf     string
+	graderErr     error
+	graderScore   int
 
 	resultGrade int
 	resultNote  string
@@ -66,7 +66,7 @@ type Study struct {
 func NewStudy(s *store.Store, d models.Deck) *Study {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	return &Study{store: s, deck: d, spin: sp, vp: viewport.New(80, 12)}
+	return &Study{store: s, deck: d, spin: sp, gradeViewport: viewport.New(80, 12)}
 }
 
 type studyLoadedMsg struct {
@@ -108,9 +108,9 @@ func (s *Study) resetPerCardState() tea.Cmd {
 	s.mcqCursor = 0
 	s.codeAnswer = card.InitialCode
 	s.explanationAnswer = ""
-	s.grader = ""
+	s.graderBuf = ""
 	s.graderErr = nil
-	s.graderGrade = 0
+	s.graderScore = 0
 	s.resultGrade = 0
 	s.resultNote = ""
 	s.stage = stageQuestion
@@ -188,9 +188,9 @@ func (s *Study) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 		return s, cmd
 
 	case streamChunkMsg:
-		s.grader += m.text
-		s.vp.SetContent(s.grader)
-		s.vp.GotoBottom()
+		s.graderBuf += m.text
+		s.gradeViewport.SetContent(s.graderBuf)
+		s.gradeViewport.GotoBottom()
 		return s, pumpStream(s.streamCh)
 
 	case streamDoneMsg:
@@ -213,16 +213,16 @@ func (s *Study) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 
 func (s *Study) finishGrade(m streamDoneMsg) tea.Cmd {
 	if m.full != "" {
-		s.grader = m.full
+		s.graderBuf = m.full
 	}
 	s.stage = stageAnswered
-	grade, ok := extractGrade(s.grader)
+	grade, ok := extractGrade(s.graderBuf)
 	if !ok {
-		s.graderGrade = 0
+		s.graderScore = 0
 		s.graderErr = fmt.Errorf("grader did not return a FINAL_GRADE — use 1-5 to grade manually")
 		return nil
 	}
-	s.graderGrade = grade
+	s.graderScore = grade
 	return s.recordReview(grade)
 }
 

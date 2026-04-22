@@ -77,8 +77,8 @@ func (s *Study) startGrading() tea.Cmd {
 	userAnswer, mode := s.gradingInputFor(card)
 
 	s.ctx, s.cancel = context.WithTimeout(context.Background(), gradeTimeout)
-	s.grader = ""
-	s.graderGrade = 0
+	s.graderBuf = ""
+	s.graderScore = 0
 	s.stage = stageGrading
 	s.streamCh = client.Grade(s.ctx, ai.GradeInput{
 		Prompt:         card.Prompt,
@@ -145,15 +145,15 @@ func (s *Study) viewGrading() []string {
 			s.spin.View() + " grading…",
 			"",
 			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
-				BorderForeground(tui.ColorBorder).Padding(0, 1).Render(s.vp.View()),
+				BorderForeground(tui.ColorBorder).Padding(0, 1).Render(s.gradeViewport.View()),
 		}
 	case stageAnswered:
 		rows := []string{}
 		if s.graderErr != nil {
 			rows = append(rows, tui.StyleDanger.Render(s.graderErr.Error()))
 		}
-		rows = append(rows, tui.StyleMuted.Render("grader:"), renderPrompt(s.grader), "",
-			tui.StylePrimary.Render(fmt.Sprintf("grade: %d", s.graderGrade)))
+		rows = append(rows, tui.StyleMuted.Render("grader:"), renderPrompt(s.graderBuf), "",
+			tui.StylePrimary.Render(fmt.Sprintf("grade: %d", s.graderScore)))
 		return rows
 	}
 	return nil

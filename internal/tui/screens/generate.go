@@ -47,27 +47,26 @@ type AIGenerate struct {
 
 	history []models.GradingMessage
 
-	pending   string
-	streaming bool
-	ctx       context.Context
-	cancel    context.CancelFunc
-	streamCh  <-chan ai.Event
-	spin      spinner.Model
-	sendErr   error
+	pendingReply string
+	streaming    bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	streamCh     <-chan ai.Event
+	spin         spinner.Model
+	lastErr      error
 
-	vp     viewport.Model
-	input  vimtea.Editor
-	inputH int
+	chatViewport viewport.Model
+	input        vimtea.Editor
+	inputH       int
 
 	pickerOpen   bool
 	pickerDecks  []models.Deck
 	pickerCursor int
 
-	proposed   []store.CardInput
-	reviewIdx  int
-	reviewing  bool
-	accepted   []store.CardInput
-	justSavedN int
+	proposed  []store.CardInput
+	reviewIdx int
+	reviewing bool
+	accepted  []store.CardInput
 
 	w, h int
 }
@@ -91,12 +90,12 @@ func NewAIGenerate(s *store.Store, deck models.Deck) *AIGenerate {
 	in.SetSize(60, 1)
 
 	return &AIGenerate{
-		store:  s,
-		deck:   deck,
-		spin:   sp,
-		input:  in,
-		inputH: 1,
-		vp:     viewport.New(80, 12),
+		store:        s,
+		deck:         deck,
+		spin:         sp,
+		input:        in,
+		inputH:       1,
+		chatViewport: viewport.New(80, 12),
 	}
 }
 
@@ -131,9 +130,9 @@ func (g *AIGenerate) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 		return g, cmd
 
 	case streamChunkMsg:
-		g.pending += m.text
+		g.pendingReply += m.text
 		g.refreshTranscript()
-		g.vp.GotoBottom()
+		g.chatViewport.GotoBottom()
 		return g, pumpStream(g.streamCh)
 
 	case streamDoneMsg:
@@ -141,7 +140,7 @@ func (g *AIGenerate) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 
 	case streamErrMsg:
 		g.streaming = false
-		g.sendErr = m.err
+		g.lastErr = m.err
 		return g, nil
 
 	case cardsSavedMsg:
@@ -177,13 +176,13 @@ func (g *AIGenerate) applyDecksLoaded(m generateDecksLoadedMsg) {
 func (g *AIGenerate) finishStream(m streamDoneMsg) tea.Cmd {
 	reply := m.full
 	if reply == "" {
-		reply = g.pending
+		reply = g.pendingReply
 	}
 	g.streaming = false
 	g.history = append(g.history, models.GradingMessage{Role: "assistant", Content: reply})
-	g.pending = ""
+	g.pendingReply = ""
 	g.refreshTranscript()
-	g.vp.GotoBottom()
+	g.chatViewport.GotoBottom()
 
 	cards := extractProposedCards(reply)
 	if len(cards) > 0 {
@@ -200,7 +199,6 @@ func (g *AIGenerate) handleSaved(m cardsSavedMsg) (tui.Screen, tea.Cmd) {
 	if m.err != nil {
 		return g, tui.ToastErr("save failed: " + m.err.Error())
 	}
-	g.justSavedN = m.n
 	return g, tui.Toast(fmt.Sprintf("saved %d card%s to %s", m.n, plural(m.n), g.deck.Name))
 }
 
@@ -212,9 +210,9 @@ func (g *AIGenerate) submitChat(text string) (tui.Screen, tea.Cmd) {
 	g.input.GetBuffer().Clear()
 	g.fitInput()
 	g.history = append(g.history, models.GradingMessage{Role: "user", Content: text})
-	g.sendErr = nil
+	g.lastErr = nil
 	g.refreshTranscript()
-	g.vp.GotoBottom()
+	g.chatViewport.GotoBottom()
 	return g, g.startStream()
 }
 
@@ -310,14 +308,14 @@ func (g *AIGenerate) flushAccepted() tea.Cmd {
 func (g *AIGenerate) startStream() tea.Cmd {
 	client, err := resolveAIClient(g.store)
 	if err != nil {
-		g.sendErr = err
+		g.lastErr = err
 		g.rewindQueuedUserTurn()
 		g.refreshTranscript()
 		return nil
 	}
 	g.ctx, g.cancel = context.WithTimeout(context.Background(), chatTimeout)
 	g.streaming = true
-	g.pending = ""
+	g.pendingReply = ""
 	g.streamCh = client.Chat(g.ctx, g.deck.Name, g.deck.Description, g.history)
 	return tea.Batch(g.spin.Tick, pumpStream(g.streamCh))
 }
@@ -346,8 +344,8 @@ func (g *AIGenerate) resizeInner() {
 	// Chrome around the viewport: deck line + blank + blank-before-input +
 	// bordered input (inputH + 2 border) + status line.
 	inputH := clampInputH(g.inputH)
-	g.vp.Width = w
-	g.vp.Height = max(3, h-(3+inputH+2+1))
+	g.chatViewport.Width = w
+	g.chatViewport.Height = max(3, h-(3+inputH+2+1))
 	g.input.SetSize(max(20, w-2), inputH)
 	g.refreshTranscript()
 }
@@ -367,15 +365,15 @@ func (g *AIGenerate) refreshTranscript() {
 		if i > 0 {
 			b.WriteString("\n\n")
 		}
-		b.WriteString(formatChatTurn(m.Role, m.Content, g.vp.Width))
+		b.WriteString(formatChatTurn(m.Role, m.Content, g.chatViewport.Width))
 	}
-	if g.streaming && g.pending != "" {
+	if g.streaming && g.pendingReply != "" {
 		if b.Len() > 0 {
 			b.WriteString("\n\n")
 		}
-		b.WriteString(formatChatTurn("assistant", g.pending, g.vp.Width))
+		b.WriteString(formatChatTurn("assistant", g.pendingReply, g.chatViewport.Width))
 	}
-	g.vp.SetContent(b.String())
+	g.chatViewport.SetContent(b.String())
 }
 
 func formatChatTurn(role, content string, width int) string {
@@ -405,7 +403,7 @@ func (g *AIGenerate) viewChat() string {
 	return lipgloss.JoinVertical(lipgloss.Left,
 		deckLine,
 		"",
-		g.vp.View(),
+		g.chatViewport.View(),
 		"",
 		g.renderInput(),
 		g.renderStatusLine(),
@@ -443,8 +441,8 @@ func (g *AIGenerate) renderStatusLine() string {
 	switch {
 	case g.streaming:
 		return g.spin.View() + tui.StyleMuted.Render(" thinking… (enter to wait)")
-	case g.sendErr != nil:
-		return tui.StyleDanger.Render(g.sendErr.Error())
+	case g.lastErr != nil:
+		return tui.StyleDanger.Render(g.lastErr.Error())
 	}
 	return ""
 }

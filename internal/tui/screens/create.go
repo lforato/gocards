@@ -30,10 +30,10 @@ type Create struct {
 	deckCursor  int
 	preselected int64
 
-	newName       textinput.Model
-	newDesc       textinput.Model
-	newColor      textinput.Model
-	newFieldFocus int
+	newName   textinput.Model
+	newDesc   textinput.Model
+	newColor  textinput.Model
+	formFocus int
 
 	targetDeck *models.Deck
 
@@ -114,7 +114,7 @@ func (c *Create) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 
 	var cmd tea.Cmd
 	if c.step == stepNewDeck {
-		switch c.newFieldFocus {
+		switch c.formFocus {
 		case 0:
 			c.newName, cmd = c.newName.Update(msg)
 		case 1:
@@ -141,7 +141,7 @@ func (c *Create) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 		case "enter":
 			if c.deckCursor == len(c.decks) || len(c.decks) == 0 {
 				c.step = stepNewDeck
-				c.newFieldFocus = 0
+				c.formFocus = 0
 				c.newName.Focus()
 				c.newDesc.Blur()
 				c.newColor.Blur()
@@ -156,10 +156,10 @@ func (c *Create) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	case stepNewDeck:
 		switch m.String() {
 		case "tab", "down":
-			c.cycleNewFocus(1)
+			c.cycleFormFocus(1)
 			return c, nil
 		case "shift+tab", "up":
-			c.cycleNewFocus(-1)
+			c.cycleFormFocus(-1)
 			return c, nil
 		case "enter":
 			if c.newName.Value() == "" {
@@ -178,7 +178,7 @@ func (c *Create) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 			return c, nil
 		}
 		var cmd tea.Cmd
-		switch c.newFieldFocus {
+		switch c.formFocus {
 		case 0:
 			c.newName, cmd = c.newName.Update(m)
 		case 1:
@@ -210,11 +210,11 @@ func (c *Create) handleKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	return c, nil
 }
 
-func (c *Create) cycleNewFocus(delta int) {
+func (c *Create) cycleFormFocus(delta int) {
 	fields := []*textinput.Model{&c.newName, &c.newDesc, &c.newColor}
-	fields[c.newFieldFocus].Blur()
-	c.newFieldFocus = cycleFocus(c.newFieldFocus, delta, len(fields))
-	fields[c.newFieldFocus].Focus()
+	fields[c.formFocus].Blur()
+	c.formFocus = cycleFocus(c.formFocus, delta, len(fields))
+	fields[c.formFocus].Focus()
 }
 
 // --- view ---

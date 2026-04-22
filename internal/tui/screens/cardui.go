@@ -13,10 +13,10 @@ import (
 // question-stage help keys, answered-stage help keys. Adding a new card
 // type means adding one entry here on top of models.cardKinds.
 type cardUI struct {
-	Color            lipgloss.Color
-	QuestionHelp     []string
-	AnsweredHelp     []string
-	EditFields       []editField
+	Color        lipgloss.Color
+	QuestionHelp []string
+	AnsweredHelp []string
+	EditFields   []editField
 }
 
 var cardUIs = map[models.CardType]cardUI{

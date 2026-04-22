@@ -293,4 +293,3 @@ func renderActionRow(text, key string, selected bool) string {
 	}
 	return selectionPrefix(selected) + style.Render(text) + "  " + tui.StyleMuted.Render("["+key+"]")
 }
-
