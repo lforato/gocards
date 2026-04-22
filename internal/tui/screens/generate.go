@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -18,6 +19,10 @@ import (
 	"github.com/lforato/gocards/internal/store"
 	"github.com/lforato/gocards/internal/tui"
 )
+
+// chatTimeout is generous compared to the grader because chat responses tend
+// to be longer, but still bounded so a hung stream doesn't lock the UI.
+const chatTimeout = 2 * time.Minute
 
 // chatSubmitMsg is emitted by the vim chat input's ctrl+s binding. It carries
 // the current buffer text so AIGenerate can queue the user's message and kick
@@ -333,7 +338,7 @@ func (g *AIGenerate) startStream() tea.Cmd {
 		g.refreshTranscript()
 		return nil
 	}
-	g.ctx, g.cancel = context.WithCancel(context.Background())
+	g.ctx, g.cancel = context.WithTimeout(context.Background(), chatTimeout)
 	g.streaming = true
 	g.pending = ""
 	g.streamCh = client.Chat(g.ctx, g.deck.Name, g.deck.Description, g.history)

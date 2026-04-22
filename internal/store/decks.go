@@ -3,9 +3,28 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/lforato/gocards/internal/models"
 )
+
+var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// ErrInvalidDeck is returned by CreateDeck when the caller supplies an empty
+// name or a color that isn't #rrggbb. Callers surface the error as a toast.
+var ErrInvalidDeck = errors.New("invalid deck")
+
+func validateDeckFields(name, color string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("%w: name is required", ErrInvalidDeck)
+	}
+	if color != "" && !hexColor.MatchString(color) {
+		return fmt.Errorf("%w: color must be #rrggbb", ErrInvalidDeck)
+	}
+	return nil
+}
 
 func (s *Store) ListDecks() ([]models.Deck, error) {
 	rows, err := s.db.Query(`SELECT id,name,description,color,created_at FROM decks ORDER BY created_at ASC`)
@@ -44,9 +63,12 @@ func (s *Store) GetDeck(id int64) (*models.Deck, error) {
 }
 
 func (s *Store) CreateDeck(name, description, color string) (*models.Deck, error) {
+	if err := validateDeckFields(name, color); err != nil {
+		return nil, err
+	}
 	res, err := s.db.Exec(
 		`INSERT INTO decks(name,description,color) VALUES(?,?,?)`,
-		name, description, color,
+		strings.TrimSpace(name), description, color,
 	)
 	if err != nil {
 		return nil, err

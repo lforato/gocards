@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -115,7 +116,21 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, cmd
 }
 
+// minTerminalW / minTerminalH are the floor below which the app renders a
+// plain-text hint instead of the framed UI — lipgloss will happily clip the
+// content, but the user has no idea what's wrong.
+const (
+	minTerminalW = 60
+	minTerminalH = 16
+)
+
 func (a *App) View() string {
+	if a.w > 0 && (a.w < minTerminalW || a.h < minTerminalH) {
+		return StyleDanger.Render("terminal too small ") +
+			StyleMuted.Render(fmt.Sprintf("(need at least %d×%d, got %d×%d)",
+				minTerminalW, minTerminalH, a.w, a.h))
+	}
+
 	header := StylePrimary.Render("gocards") + StyleMuted.Render("  terminal flashcards")
 	content := a.top().View()
 

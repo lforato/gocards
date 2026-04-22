@@ -3,6 +3,7 @@ package screens
 import (
 	"context"
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -13,6 +14,11 @@ import (
 	"github.com/lforato/gocards/internal/tui"
 	"github.com/lforato/gocards/internal/tui/widgets"
 )
+
+// gradeTimeout bounds how long we wait for the grader to finish streaming.
+// If the model hangs, the ctx fires and the user sees the timeout error
+// rather than watching the spinner forever.
+const gradeTimeout = 60 * time.Second
 
 // codeSubmitMsg is emitted by the inline vimtea editor's ctrl+s binding and
 // carries the user's final answer so the Study screen can start grading.
@@ -88,7 +94,7 @@ func (s *Study) startGrading() tea.Cmd {
 		mode = "code"
 	}
 
-	s.ctx, s.cancel = context.WithCancel(context.Background())
+	s.ctx, s.cancel = context.WithTimeout(context.Background(), gradeTimeout)
 	s.grader = ""
 	s.graderGrade = 0
 	s.stage = stageGrading
