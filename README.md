@@ -31,16 +31,16 @@ Grab the archive for your platform from the
 drop `gocards` somewhere on your `$PATH`:
 
 ```bash
-# macOS (Apple Silicon) — adapt the asset name for your OS/arch
+# macOS (Apple Silicon) — swap VERSION and the asset suffix for your OS/arch
+VERSION=v0.0.1
 curl -L -o gocards.tar.gz \
-  https://github.com/lforato/gocards/releases/latest/download/gocards-darwin-arm64.tar.gz
+  https://github.com/lforato/gocards/releases/download/$VERSION/gocards-$VERSION-darwin-arm64.tar.gz
 tar xzf gocards.tar.gz
 mv gocards /usr/local/bin/
 gocards
 ```
 
-Binaries are built for **darwin/amd64**, **darwin/arm64**, **linux/amd64**,
-**linux/arm64**, and **windows/amd64**.
+Asset suffixes: `darwin-amd64`, `darwin-arm64`, `linux-amd64`, `linux-arm64` (all `.tar.gz`), and `windows-amd64.zip`.
 
 ### From source
 
