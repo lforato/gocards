@@ -61,28 +61,28 @@ func answeredHelpFill() []string {
 
 var cardUIs = map[models.CardType]cardUI{
 	models.CardMCQ: {
-		Color:       tui.ColorAccent,
-		QuestionFn:  questionHelpMCQ,
-		AnsweredFn:  answeredHelpMCQ,
-		EditFields:  []editField{fType, fLanguage, fPrompt, fChoices},
+		Color:      tui.ColorAccent,
+		QuestionFn: questionHelpMCQ,
+		AnsweredFn: answeredHelpMCQ,
+		EditFields: []editField{fType, fLanguage, fPrompt, fChoices},
 	},
 	models.CardCode: {
-		Color:       tui.ColorSuccess,
-		QuestionFn:  questionHelpCode,
-		AnsweredFn:  answeredHelpCode,
-		EditFields:  []editField{fLanguage, fPrompt, fInitialCode, fExpected},
+		Color:      tui.ColorSuccess,
+		QuestionFn: questionHelpCode,
+		AnsweredFn: answeredHelpCode,
+		EditFields: []editField{fLanguage, fPrompt, fInitialCode, fExpected},
 	},
 	models.CardFill: {
-		Color:       tui.ColorWarn,
-		QuestionFn:  questionHelpFill,
-		AnsweredFn:  answeredHelpFill,
-		EditFields:  []editField{fType, fLanguage, fPrompt, fTemplate},
+		Color:      tui.ColorWarn,
+		QuestionFn: questionHelpFill,
+		AnsweredFn: answeredHelpFill,
+		EditFields: []editField{fType, fLanguage, fPrompt, fTemplate},
 	},
 	models.CardExp: {
-		Color:       tui.ColorPrimary,
-		QuestionFn:  questionHelpCode,
-		AnsweredFn:  answeredHelpCode,
-		EditFields:  []editField{fType, fLanguage, fPrompt, fInitialCode, fExpected},
+		Color:      tui.ColorPrimary,
+		QuestionFn: questionHelpCode,
+		AnsweredFn: answeredHelpCode,
+		EditFields: []editField{fType, fLanguage, fPrompt, fInitialCode, fExpected},
 	},
 }
 

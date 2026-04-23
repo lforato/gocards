@@ -94,11 +94,11 @@ func (s *Study) startGrading() tea.Cmd {
 	return tea.Batch(s.spin.Tick, pumpStream(s.streamCh))
 }
 
-func (s *Study) gradingInputFor(card *models.Card) (userAnswer, mode string) {
+func (s *Study) gradingInputFor(card *models.Card) (userAnswer string, mode ai.GradeMode) {
 	if card.Type == models.CardExp {
-		return s.explanationAnswer, "explanation"
+		return s.explanationAnswer, ai.GradeModeExplanation
 	}
-	return s.codeAnswer, "code"
+	return s.codeAnswer, ai.GradeModeCode
 }
 
 func (s *Study) viewCode(card *models.Card) string {

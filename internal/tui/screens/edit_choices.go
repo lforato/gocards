@@ -14,6 +14,12 @@ import (
 
 const maxMCQChoices = 26
 
+// choiceIDFromIndex turns a 0-based choice index into the 'a','b','c'… label
+// the UI and DB use. Only valid for 0 ≤ idx < maxMCQChoices (26).
+func choiceIDFromIndex(idx int) string {
+	return string(rune('a' + idx))
+}
+
 func (e *Edit) updateChoicesKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	switch m.String() {
 	case "tab":
@@ -65,6 +71,9 @@ func (e *Edit) deleteChoice() {
 }
 
 func (e *Edit) beginChoiceEdit(idx int) {
+	if idx < 0 || idx >= len(e.card.Choices) {
+		return
+	}
 	e.choiceEditing = true
 	e.choiceEditIdx = idx
 	e.choiceInput.SetValue(e.card.Choices[idx].Text)
@@ -121,5 +130,5 @@ func (e *Edit) renderChoiceRow(i int, ch models.Choice) string {
 		text = tui.StyleMuted.Render(i18n.T(i18n.KeyEditEmptyChoice))
 	}
 	selected := i == e.choiceCursor && e.focus == fChoices
-	return fmt.Sprintf("%s%s %s. %s", selectionPrefix(selected), mark, string(rune('a'+i)), text)
+	return fmt.Sprintf("%s%s %s. %s", selectionPrefix(selected), mark, choiceIDFromIndex(i), text)
 }

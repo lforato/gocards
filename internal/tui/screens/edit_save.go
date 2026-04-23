@@ -76,11 +76,14 @@ func anyCorrectChoice(choices []models.Choice) bool {
 	return false
 }
 
+// normalizeChoiceIDs rewrites each choice's ID to its positional label
+// ("a", "b", "c"…). Guarantees stable IDs even after inserts/deletes, which
+// matters because the AI-generated choice IDs may not be contiguous.
 func normalizeChoiceIDs(choices []models.Choice) []models.Choice {
 	out := make([]models.Choice, len(choices))
 	for i, ch := range choices {
 		out[i] = models.Choice{
-			ID:        string(rune('a' + i)),
+			ID:        choiceIDFromIndex(i),
 			Text:      ch.Text,
 			IsCorrect: ch.IsCorrect,
 		}

@@ -21,7 +21,7 @@ var templatesByLang = func() map[i18n.Lang]*template.Template {
 	out := make(map[i18n.Lang]*template.Template, len(i18n.Supported))
 	for _, lang := range i18n.Supported {
 		t := template.Must(
-			template.New("prompts-" + string(lang)).
+			template.New("prompts-"+string(lang)).
 				Funcs(template.FuncMap{
 					"add":  func(a, b int) int { return a + b },
 					"join": strings.Join,
@@ -89,7 +89,7 @@ func generateSystem(preferredLanguages string) string {
 // student-authored comments; code-mode grades a full solution.
 func gradeSystem(in GradeInput) string {
 	name := "grade_code.tmpl"
-	if in.Mode == "explanation" {
+	if in.Mode == GradeModeExplanation {
 		name = "grade_explanation.tmpl"
 	}
 	return renderTemplate(name, struct {

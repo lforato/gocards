@@ -61,7 +61,7 @@ type Study struct {
 	// user/assistant turns (seeded after the first response); graderBuf
 	// holds the currently-streaming reply.
 	gradingInput      *ai.GradeInput
-	gradingHistory    []models.GradingMessage
+	gradingHistory    []models.ChatMessage
 	followUpStreaming bool
 	followUpEditor    vimtea.Editor
 	followUpH         int
@@ -167,10 +167,6 @@ func (s *Study) resetPerCardState() tea.Cmd {
 	if kind.UsesBlanks {
 		s.initFillInputs(card)
 	}
-
-	if card.Type == models.CardExp {
-		s.explanationAnswer = ""
-	}
 	if kind.UsesCodeEditor {
 		return s.initCodeEditor(card)
 	}
@@ -185,20 +181,25 @@ const (
 	studyPromptChrome = 2
 )
 
+const (
+	minStudyBodyHeight  = 8
+	minStudyEditorWidth = 20
+)
+
 func (s *Study) bodyHeight() int {
 	h := s.h
 	if h <= 0 {
-		h = 20
+		h = fallbackTerminalHeight
 	}
-	return max(8, h-studyChromeRows)
+	return max(minStudyBodyHeight, h-studyChromeRows)
 }
 
 func (s *Study) editorWidth() int {
 	w := s.w
 	if w <= 0 {
-		w = 80
+		w = fallbackTerminalWidth
 	}
-	return max(20, w)
+	return max(minStudyEditorWidth, w)
 }
 
 // editorHeight is a fallback used when the editor is created before View has
@@ -281,7 +282,7 @@ type cardDeletedMsg struct{ err error }
 // advances to the next one (or ends the session if it was the last).
 func (s *Study) handleCardDeleted(m cardDeletedMsg) (tui.Screen, tea.Cmd) {
 	if m.err != nil {
-		return s, tui.ToastErr("delete failed: " + m.err.Error())
+		return s, tui.ToastErr(i18n.T(i18n.KeyDeleteFailedPfx) + m.err.Error())
 	}
 	if s.idx >= len(s.cards) {
 		return s, nil
@@ -308,13 +309,13 @@ func (s *Study) finishGrade(m streamDoneMsg) tea.Cmd {
 	// dialogue. On the first response we also seed the initial user turn
 	// (the one Grade() built internally from the student's answer).
 	if len(s.gradingHistory) == 0 && s.gradingInput != nil {
-		s.gradingHistory = append(s.gradingHistory, models.GradingMessage{
-			Role:    "user",
+		s.gradingHistory = append(s.gradingHistory, models.ChatMessage{
+			Role:    models.RoleUser,
 			Content: ai.FirstGraderTurn(*s.gradingInput),
 		})
 	}
-	s.gradingHistory = append(s.gradingHistory, models.GradingMessage{
-		Role:    "assistant",
+	s.gradingHistory = append(s.gradingHistory, models.ChatMessage{
+		Role:    models.RoleAssistant,
 		Content: reply,
 	})
 
@@ -592,7 +593,7 @@ func (s *Study) recordReview(grade int) tea.Cmd {
 		return nil
 	}
 	ease, interval := s.priorSchedule(card.ID)
-	r := srs.CalculateNext(grade, ease, interval)
+	r := srs.ScheduleNext(grade, ease, interval)
 	if _, err := s.store.CreateReview(card.ID, grade, r.Ease, r.Interval, r.NextDue); err != nil {
 		return tui.ToastErr(i18n.T(i18n.KeyStudyReviewSaveFail) + err.Error())
 	}
@@ -702,7 +703,7 @@ func (s *Study) fitFollowUp() {
 func (s *Study) refreshGradeViewport() {
 	w := s.gradeViewport.Width
 	if w <= 0 {
-		w = max(40, s.w)
+		w = max(gradeViewportMinWidth, s.w)
 	}
 	card := s.current()
 	var parts []string
@@ -717,13 +718,13 @@ func (s *Study) refreshGradeViewport() {
 		}
 	}
 	for i, t := range s.gradingHistory {
-		if i == 0 && t.Role == "user" {
+		if i == 0 && t.Role == models.RoleUser {
 			continue
 		}
 		parts = append(parts, formatGradeTurn(t.Role, t.Content, w))
 	}
 	if s.graderBuf != "" {
-		parts = append(parts, formatGradeTurn("assistant", s.graderBuf, w))
+		parts = append(parts, formatGradeTurn(models.RoleAssistant, s.graderBuf, w))
 	}
 	s.gradeViewport.SetContent(strings.Join(parts, "\n\n"))
 	s.gradeViewport.GotoBottom()
@@ -734,31 +735,48 @@ func (s *Study) answerForViewport(card *models.Card) (answer, label string) {
 		return "", ""
 	}
 	if card.Type == models.CardExp {
-		return s.explanationAnswer, "annotated source"
+		return s.explanationAnswer, i18n.T(i18n.KeyStudyAnswerAnnotated)
 	}
-	return s.codeAnswer, "your answer"
+	return s.codeAnswer, i18n.T(i18n.KeyStudyAnswerYours)
 }
 
-// resizeGradeViewport fits the chat viewport to the current window, leaving
-// room for the chrome: deck header + blank + grade/spinner + blank + input
-// box (if present) + status line. Called before every render so changes to
-// followUpH (chat input growing/shrinking) are picked up immediately.
-func (s *Study) resizeGradeViewport() {
-	w := s.w
-	if w <= 0 {
-		w = 80
-	}
-	h := s.h
-	if h <= 0 {
-		h = 20
-	}
-	s.gradeViewport.Width = max(40, w)
+// Layout constants for the grading viewport's surrounding chrome. We reserve
+// these rows so the viewport can't render over the header, grade line, or
+// follow-up input.
+const (
+	// Fixed chrome: deck header, two spacer rows, grade/spinner row, status row.
+	gradeViewportFixedChrome = 5
+	// Extra rows consumed by the follow-up input's rounded border (top + bottom).
+	followUpInputBorderRows = 2
+	// Minimum viewport dimensions — below these, the chat becomes unreadable.
+	gradeViewportMinHeight = 6
+	gradeViewportMinWidth  = 40
 
-	chrome := 5 // deck header (1) + spacer (1) + spacer (1) + grade/spinner (1) + status line (1)
-	if s.stage == stageAnswered && s.followUpEditor != nil {
-		chrome += s.followUpH + 2 // bordered input
+	// Fallbacks when terminal size hasn't been received yet.
+	fallbackTerminalWidth  = 80
+	fallbackTerminalHeight = 20
+)
+
+// resizeGradeViewport fits the chat viewport to the current window, leaving
+// room for the chrome (deck header, grade line, follow-up input, etc.).
+// Called before every render so changes to followUpH (chat input growing or
+// shrinking) are picked up immediately.
+func (s *Study) resizeGradeViewport() {
+	width, height := s.w, s.h
+	if width <= 0 {
+		width = fallbackTerminalWidth
 	}
-	s.gradeViewport.Height = max(6, h-chrome)
+	if height <= 0 {
+		height = fallbackTerminalHeight
+	}
+
+	s.gradeViewport.Width = max(gradeViewportMinWidth, width)
+
+	chromeRows := gradeViewportFixedChrome
+	if s.stage == stageAnswered && s.followUpEditor != nil {
+		chromeRows += s.followUpH + followUpInputBorderRows
+	}
+	s.gradeViewport.Height = max(gradeViewportMinHeight, height-chromeRows)
 }
 
 // handleGradeScroll maps scroll keys onto the chat viewport. Runs before
@@ -791,9 +809,9 @@ func (s *Study) handleGradeScroll(m tea.KeyMsg) bool {
 	return true
 }
 
-func formatGradeTurn(role, content string, width int) string {
+func formatGradeTurn(role models.ChatRole, content string, width int) string {
 	tag := tui.StylePrimary.Render("you ›")
-	if role == "assistant" {
+	if role == models.RoleAssistant {
 		tag = tui.StyleAccent.Render("grader ›")
 	}
 	body := lipgloss.NewStyle().Width(max(20, width)).Render(content)
@@ -812,8 +830,8 @@ func (s *Study) submitFollowUp(text string) tea.Cmd {
 		s.graderErr = fmt.Errorf("%w", err)
 		return nil
 	}
-	s.gradingHistory = append(s.gradingHistory, models.GradingMessage{
-		Role:    "user",
+	s.gradingHistory = append(s.gradingHistory, models.ChatMessage{
+		Role:    models.RoleUser,
 		Content: text,
 	})
 	s.followUpEditor.GetBuffer().Clear()
@@ -825,7 +843,7 @@ func (s *Study) submitFollowUp(text string) tea.Cmd {
 	s.followUpStreaming = true
 
 	in := *s.gradingInput
-	in.History = append([]models.GradingMessage{}, s.gradingHistory...)
+	in.History = append([]models.ChatMessage{}, s.gradingHistory...)
 	s.streamCh = client.Grade(s.ctx, in)
 	s.refreshGradeViewport()
 	return tea.Batch(s.spin.Tick, pumpStream(s.streamCh))

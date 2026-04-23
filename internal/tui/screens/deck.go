@@ -246,11 +246,11 @@ func (d *DeckView) handleDeleteConfirm(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	}
 	d.selected = map[int64]bool{}
 	if failed > 0 {
-		return d, tea.Batch(tui.ToastErr(fmt.Sprintf("%d of %d deletes failed", failed, len(ids))), d.load())
+		return d, tea.Batch(tui.ToastErr(i18n.Tf(i18n.KeyBulkDeleteFailedFmt, failed, len(ids))), d.load())
 	}
-	msg := "card deleted"
+	msg := i18n.T(i18n.KeyStudyCardDeleted)
 	if len(ids) > 1 {
-		msg = fmt.Sprintf("%d cards deleted", len(ids))
+		msg = i18n.Tf(i18n.KeyDeletedCardsFmt, len(ids))
 	}
 	return d, tea.Batch(tui.Toast(msg), d.load())
 }
@@ -442,4 +442,3 @@ func (d *DeckView) HelpKeys() []string {
 		i18n.Help("esc", i18n.KeyHelpBack),
 	}
 }
-

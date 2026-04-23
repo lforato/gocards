@@ -66,22 +66,37 @@ func (s *Study) submitFill(card *models.Card) (tui.Screen, tea.Cmd) {
 	if card.BlanksData == nil || len(card.BlanksData.Blanks) != len(s.fillInputs) {
 		return s, tui.ToastErr(i18n.T(i18n.KeyStudyFillMalformed))
 	}
-	partial := 0
-	for i, ti := range s.fillInputs {
-		want := strings.TrimSpace(card.BlanksData.Blanks[i])
-		got := strings.TrimSpace(ti.Value())
-		if strings.EqualFold(got, want) {
-			partial++
-		}
-	}
-	grade := gradeFillFromPartial(partial, len(s.fillInputs))
+	partial := countCorrectBlanks(s.fillInputs, card.BlanksData.Blanks)
+	correct := partial
+	total := len(s.fillInputs)
+	grade := gradeForFill(correct, total)
 	s.resultGrade = grade
-	s.resultNote = fmt.Sprintf("%d / %d blanks correct", partial, len(s.fillInputs))
+	s.resultNote = i18n.Tf(i18n.KeyStudyFillScoreFmt, correct, total)
 	s.stage = stageAnswered
 	return s, s.recordReview(grade)
 }
 
-func gradeFillFromPartial(correct, total int) int {
+// countCorrectBlanks compares typed values against expected blanks in a
+// whitespace-trimmed, case-insensitive match. That matters because the
+// grader's job here is to reward knowledge of the fill, not exact casing or
+// stray spaces.
+func countCorrectBlanks(inputs []textinput.Model, expected []string) int {
+	correct := 0
+	for i, ti := range inputs {
+		want := strings.TrimSpace(expected[i])
+		got := strings.TrimSpace(ti.Value())
+		if strings.EqualFold(got, want) {
+			correct++
+		}
+	}
+	return correct
+}
+
+// gradeForFill buckets a correct/total ratio into an SM-2 grade.
+//   - all correct            → 5 (Easy)
+//   - at least one correct   → 3 (Hard)
+//   - none correct           → 1 (Again)
+func gradeForFill(correct, total int) int {
 	switch {
 	case correct == total && total > 0:
 		return 5

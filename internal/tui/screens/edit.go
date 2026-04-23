@@ -258,7 +258,6 @@ func (e *Edit) updateKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	return e, nil
 }
 
-
 const editViewportFallbackH = 20
 
 func (e *Edit) resizeViewport() {
@@ -297,8 +296,8 @@ type editView struct {
 
 func newEditView() *editView { return &editView{fieldTop: map[editField]int{}} }
 
-func (v *editView) add(lines ...string)   { v.lines = append(v.lines, lines...) }
-func (v *editView) blank()                { v.lines = append(v.lines, "") }
+func (v *editView) add(lines ...string) { v.lines = append(v.lines, lines...) }
+func (v *editView) blank()              { v.lines = append(v.lines, "") }
 func (v *editView) field(f editField, lines ...string) {
 	v.fieldTop[f] = len(v.lines)
 	v.lines = append(v.lines, lines...)

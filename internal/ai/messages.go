@@ -6,17 +6,20 @@ import (
 	"github.com/lforato/gocards/internal/models"
 )
 
-func toAnthropic(history []models.GradingMessage) []anthropic.MessageParam {
+// toAnthropicHistory maps our chat history into the Anthropic SDK's
+// MessageParam shape so we can replay a multi-turn conversation.
+func toAnthropicHistory(history []models.ChatMessage) []anthropic.MessageParam {
 	out := make([]anthropic.MessageParam, 0, len(history))
 	for _, m := range history {
-		out = append(out, msgParam(m))
+		out = append(out, toAnthropicMessage(m))
 	}
 	return out
 }
 
-func msgParam(m models.GradingMessage) anthropic.MessageParam {
-	if m.Role == "assistant" {
-		return anthropic.NewAssistantMessage(anthropic.NewTextBlock(m.Content))
+func toAnthropicMessage(m models.ChatMessage) anthropic.MessageParam {
+	block := anthropic.NewTextBlock(m.Content)
+	if m.Role == models.RoleAssistant {
+		return anthropic.NewAssistantMessage(block)
 	}
-	return anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content))
+	return anthropic.NewUserMessage(block)
 }

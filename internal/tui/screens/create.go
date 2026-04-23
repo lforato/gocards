@@ -23,12 +23,13 @@ const (
 	stepPickType
 )
 
-// deckFormIdx names the slots in the new-deck form so index lookups read
-// like code instead of magic numbers.
+// Field indices into Create.deckForm — the form is fixed at 3 inputs in the
+// order Name, Description, Color. Callers use these names instead of bare
+// integers so the intent is readable.
 const (
-	deckFormName = iota
-	deckFormDesc
-	deckFormColor
+	deckFormFieldName = iota
+	deckFormFieldDesc
+	deckFormFieldColor
 )
 
 const defaultDeckColor = "#f59e0b"
@@ -47,14 +48,17 @@ type Create struct {
 	typeCursor int
 }
 
-func cardTypes() []models.CardType {
+// cardTypes lists the card types in canonical menu order (matches the
+// registry order in models.AllKinds). Computed once at package init so the
+// per-keystroke Update loops don't re-allocate.
+var cardTypes = func() []models.CardType {
 	kinds := models.AllKinds()
 	out := make([]models.CardType, len(kinds))
 	for i, k := range kinds {
 		out[i] = k.Type
 	}
 	return out
-}
+}()
 
 func NewCreate(s *store.Store, preselectedDeckID int64) *Create {
 	return &Create{
@@ -176,15 +180,16 @@ func (c *Create) handleNewDeckKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 }
 
 func (c *Create) submitNewDeck() (tui.Screen, tea.Cmd) {
-	name := c.deckForm.Value(deckFormName)
+	name := c.deckForm.Value(deckFormFieldName)
 	if name == "" {
 		return c, tui.ToastErr(i18n.T(i18n.KeyCreateValidationName))
 	}
-	color := strings.TrimSpace(c.deckForm.Value(deckFormColor))
+	color := strings.TrimSpace(c.deckForm.Value(deckFormFieldColor))
 	if color == "" {
 		color = defaultDeckColor
 	}
-	deck, err := c.store.CreateDeck(name, c.deckForm.Value(deckFormDesc), color, string(i18n.CurrentLang()))
+	description := c.deckForm.Value(deckFormFieldDesc)
+	deck, err := c.store.CreateDeck(name, description, color, string(i18n.CurrentLang()))
 	if err != nil {
 		return c, tui.ToastErr(i18n.T(i18n.KeyCreateFailedPrefix) + err.Error())
 	}
@@ -198,14 +203,14 @@ func (c *Create) handlePickTypeKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 	case "up", "k":
 		c.typeCursor = cursorUp(c.typeCursor)
 	case "down", "j":
-		c.typeCursor = cursorDown(c.typeCursor, len(cardTypes()))
+		c.typeCursor = cursorDown(c.typeCursor, len(cardTypes))
 	case "enter":
 		if c.targetDeck == nil {
 			return c, nil
 		}
 		draft := models.Card{
 			DeckID:   c.targetDeck.ID,
-			Type:     cardTypes()[c.typeCursor],
+			Type:     cardTypes[c.typeCursor],
 			Language: "javascript",
 		}
 		return c, navTo(NewEdit(c.store, draft))
@@ -266,7 +271,7 @@ func (c *Create) viewPickType() string {
 		title += "  " + tui.StyleMuted.Render("→ "+c.targetDeck.Name)
 	}
 	rows := []string{title, ""}
-	for i, t := range cardTypes() {
+	for i, t := range cardTypes {
 		sel := i == c.typeCursor
 		rows = append(rows, selectionPrefix(sel)+typeBadge(t, sel)+"  "+tui.StyleMuted.Render(typeDescription(t)))
 	}

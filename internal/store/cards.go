@@ -10,8 +10,9 @@ import (
 	"github.com/lforato/gocards/internal/models"
 )
 
-// CardInput mirrors models.Card minus the server-managed fields so callers
-// can't accidentally set ID/DeckID/CreatedAt.
+// CardInput mirrors models.Card minus the server-managed fields (id, deck_id,
+// created_at). Callers use this to create or update cards without being able
+// to forge identity or timestamps.
 type CardInput struct {
 	Type           models.CardType
 	Language       string
@@ -30,69 +31,69 @@ type rowScanner interface {
 
 func scanCard(sc rowScanner) (models.Card, error) {
 	var c models.Card
-	var blanks, choices sql.NullString
-	var ts string
+	var blanksJSON, choicesJSON sql.NullString
+	var createdAt string
 	err := sc.Scan(
 		&c.ID, &c.DeckID, &c.Type, &c.Language,
-		&c.Prompt, &c.InitialCode, &c.ExpectedAnswer, &blanks, &choices, &ts,
+		&c.Prompt, &c.InitialCode, &c.ExpectedAnswer, &blanksJSON, &choicesJSON, &createdAt,
 	)
 	if err != nil {
 		return c, err
 	}
-	c.CreatedAt = parseTime(ts)
-	if blanks.Valid && blanks.String != "" && blanks.String != "null" {
+	c.CreatedAt = parseTime(createdAt)
+
+	if hasJSONValue(blanksJSON) {
 		var bd models.BlankData
-		if err := json.Unmarshal([]byte(blanks.String), &bd); err != nil {
+		if err := json.Unmarshal([]byte(blanksJSON.String), &bd); err != nil {
 			return c, fmt.Errorf("card %d: decode blanks_data: %w", c.ID, err)
 		}
 		c.BlanksData = &bd
 	}
-	if choices.Valid && choices.String != "" && choices.String != "null" {
+
+	if hasJSONValue(choicesJSON) {
 		var cs []models.Choice
-		if err := json.Unmarshal([]byte(choices.String), &cs); err != nil {
+		if err := json.Unmarshal([]byte(choicesJSON.String), &cs); err != nil {
 			return c, fmt.Errorf("card %d: decode choices: %w", c.ID, err)
 		}
 		c.Choices = cs
 	}
+
 	return c, nil
 }
 
-func encodeCardJSON(in CardInput) (blanks, choices any, err error) {
+// hasJSONValue reports whether a nullable JSON column actually carries a
+// value. Empty string, NULL, and the literal "null" are all treated as
+// "no value" — the column stays on the model as nil/empty slice.
+func hasJSONValue(col sql.NullString) bool {
+	return col.Valid && col.String != "" && col.String != "null"
+}
+
+// encodeCardJSON returns the DB-ready representations of the two optional
+// JSON columns. Nil-valued fields encode to nil (not "null") so the column
+// stays NULL.
+func encodeCardJSON(in CardInput) (blanksJSON, choicesJSON any, err error) {
 	if in.BlanksData != nil {
 		b, e := json.Marshal(in.BlanksData)
 		if e != nil {
 			return nil, nil, fmt.Errorf("encode blanks_data: %w", e)
 		}
-		blanks = string(b)
+		blanksJSON = string(b)
 	}
 	if in.Choices != nil {
 		b, e := json.Marshal(in.Choices)
 		if e != nil {
 			return nil, nil, fmt.Errorf("encode choices: %w", e)
 		}
-		choices = string(b)
+		choicesJSON = string(b)
 	}
-	return blanks, choices, nil
+	return blanksJSON, choicesJSON, nil
 }
 
 func (s *Store) ListCards(deckID int64) ([]models.Card, error) {
-	rows, err := s.db.Query(
-		`SELECT `+cardCols+` FROM cards WHERE deck_id = ? ORDER BY created_at ASC`, deckID,
+	return s.queryCards(
+		`SELECT `+cardCols+` FROM cards WHERE deck_id = ? ORDER BY created_at ASC`,
+		deckID,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	out := []models.Card{}
-	for rows.Next() {
-		c, err := scanCard(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
 }
 
 func (s *Store) CountCards(deckID int64) (int, error) {
@@ -101,34 +102,40 @@ func (s *Store) CountCards(deckID int64) (int, error) {
 	return n, err
 }
 
-// DueCards returns cards whose next_due has elapsed. Unreviewed cards count
-// as due. Capped at limit rows.
+// DueCards returns cards whose last review's next_due has elapsed. Cards that
+// have never been reviewed count as due. Results are oldest-first, capped at
+// limit rows.
 func (s *Store) DueCards(deckID int64, limit int) ([]models.Card, error) {
-	q := `
-        SELECT ` + cardCols + ` FROM cards c
-        LEFT JOIN (
-            SELECT card_id, MAX(next_due) AS latest FROM reviews GROUP BY card_id
-        ) lr ON lr.card_id = c.id
-        WHERE c.deck_id = ?
-          AND (lr.latest IS NULL OR lr.latest <= ?)
-        ORDER BY c.created_at ASC
-        LIMIT ?`
+	const query = `
+		SELECT ` + cardCols + ` FROM cards c
+		LEFT JOIN (
+			SELECT card_id, MAX(next_due) AS last_next_due
+			FROM reviews
+			GROUP BY card_id
+		) last_review ON last_review.card_id = c.id
+		WHERE c.deck_id = ?
+		  AND (last_review.last_next_due IS NULL OR last_review.last_next_due <= ?)
+		ORDER BY c.created_at ASC
+		LIMIT ?`
+	return s.queryCards(query, deckID, formatTime(time.Now()), limit)
+}
 
-	rows, err := s.db.Query(q, deckID, formatTime(time.Now()), limit)
+func (s *Store) queryCards(query string, args ...any) ([]models.Card, error) {
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	out := []models.Card{}
+	cards := []models.Card{}
 	for rows.Next() {
 		c, err := scanCard(rows)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, c)
+		cards = append(cards, c)
 	}
-	return out, rows.Err()
+	return cards, rows.Err()
 }
 
 func (s *Store) GetCard(id int64) (*models.Card, error) {
@@ -143,6 +150,9 @@ func (s *Store) GetCard(id int64) (*models.Card, error) {
 	return &c, nil
 }
 
+// BulkCreateCards inserts every input in one transaction so a mid-batch
+// failure leaves the deck untouched. Returns the created cards in the same
+// order as the inputs.
 func (s *Store) BulkCreateCards(deckID int64, inputs []CardInput) ([]models.Card, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -155,40 +165,48 @@ func (s *Store) BulkCreateCards(deckID int64, inputs []CardInput) ([]models.Card
 		}
 	}()
 
-	ids := make([]int64, 0, len(inputs))
+	insertedIDs := make([]int64, 0, len(inputs))
 	for _, in := range inputs {
-		blanksJSON, choicesJSON, err := encodeCardJSON(in)
+		id, err := insertCardTx(tx, deckID, in)
 		if err != nil {
 			return nil, err
 		}
-		res, err := tx.Exec(
-			`INSERT INTO cards(deck_id,type,language,prompt,initial_code,expected_answer,blanks_data,choices)
-             VALUES(?,?,?,?,?,?,?,?)`,
-			deckID, string(in.Type), in.Language, in.Prompt, in.InitialCode, in.ExpectedAnswer, blanksJSON, choicesJSON,
-		)
-		if err != nil {
-			return nil, err
-		}
-		id, err := res.LastInsertId()
-		if err != nil {
-			return nil, fmt.Errorf("last insert id: %w", err)
-		}
-		ids = append(ids, id)
+		insertedIDs = append(insertedIDs, id)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	committed = true
 
-	out := make([]models.Card, 0, len(ids))
-	for _, id := range ids {
+	created := make([]models.Card, 0, len(insertedIDs))
+	for _, id := range insertedIDs {
 		c, err := s.GetCard(id)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, *c)
+		created = append(created, *c)
 	}
-	return out, nil
+	return created, nil
+}
+
+func insertCardTx(tx *sql.Tx, deckID int64, in CardInput) (int64, error) {
+	blanksJSON, choicesJSON, err := encodeCardJSON(in)
+	if err != nil {
+		return 0, err
+	}
+	res, err := tx.Exec(
+		`INSERT INTO cards(deck_id,type,language,prompt,initial_code,expected_answer,blanks_data,choices)
+		 VALUES(?,?,?,?,?,?,?,?)`,
+		deckID, string(in.Type), in.Language, in.Prompt, in.InitialCode, in.ExpectedAnswer, blanksJSON, choicesJSON,
+	)
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("last insert id: %w", err)
+	}
+	return id, nil
 }
 
 func (s *Store) UpdateCard(id int64, in CardInput) (*models.Card, error) {

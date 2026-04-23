@@ -66,9 +66,18 @@ type StudySession struct {
 	CardsReviewed int        `json:"cards_reviewed"`
 }
 
-type GradingMessage struct {
-	Role    string `json:"role"` // "user" | "assistant"
-	Content string `json:"content"`
+type ChatRole string
+
+const (
+	RoleUser      ChatRole = "user"
+	RoleAssistant ChatRole = "assistant"
+)
+
+// ChatMessage is one turn in any multi-turn AI conversation: generate-cards
+// brainstorming, grading follow-ups, or deck chat.
+type ChatMessage struct {
+	Role    ChatRole `json:"role"`
+	Content string   `json:"content"`
 }
 
 type DeckWithCounts struct {

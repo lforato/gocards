@@ -13,12 +13,20 @@ import (
 	"github.com/lforato/gocards/internal/tui/widgets"
 )
 
+// Setting row identifiers — shared with the store's settings table so the
+// same strings can't drift between the form and persistence layer.
+const (
+	settingKeyDailyLimit         = "dailyLimit"
+	settingKeyPreferredLanguages = "preferredLanguages"
+	settingKeyAPIKey             = "apiKey"
+	settingKeyLanguage           = "language"
+)
+
 type settingField struct {
-	key     string
-	labelK  i18n.Key
-	kind    settingKind
-	masked  bool
-	options []string
+	key    string
+	labelK i18n.Key
+	kind   settingKind
+	masked bool
 }
 
 type settingKind int
@@ -29,10 +37,10 @@ const (
 )
 
 var settingFields = []settingField{
-	{key: "dailyLimit", labelK: i18n.KeySettingsDailyLimit, kind: settingText},
-	{key: "preferredLanguages", labelK: i18n.KeySettingsPrefLangs, kind: settingText},
-	{key: "apiKey", labelK: i18n.KeySettingsAPIKey, kind: settingText, masked: true},
-	{key: "language", labelK: i18n.KeySettingsLanguage, kind: settingPicker},
+	{key: settingKeyDailyLimit, labelK: i18n.KeySettingsDailyLimit, kind: settingText},
+	{key: settingKeyPreferredLanguages, labelK: i18n.KeySettingsPrefLangs, kind: settingText},
+	{key: settingKeyAPIKey, labelK: i18n.KeySettingsAPIKey, kind: settingText, masked: true},
+	{key: settingKeyLanguage, labelK: i18n.KeySettingsLanguage, kind: settingPicker},
 }
 
 type Settings struct {
@@ -98,32 +106,38 @@ func (s *Settings) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 // save persists every field and, if the language changed, applies it
 // immediately via i18n.SetLang so the next View()s already render in the
 // new locale. Returns whether the language value changed.
-func (s *Settings) save() (bool, error) {
-	var langChanged bool
+func (s *Settings) save() (langChanged bool, err error) {
 	for i, sf := range settingFields {
 		raw := s.form.Value(i)
-		if sf.key == "language" {
-			prev, _, _ := s.store.GetSetting(sf.key)
-			if prev != raw {
+		if sf.key == settingKeyLanguage {
+			if changed, err := s.saveLanguage(raw); err != nil {
+				return false, err
+			} else if changed {
 				langChanged = true
 			}
-			if err := s.store.SetSetting(sf.key, raw); err != nil {
-				return false, err
-			}
-			i18n.SetLang(i18n.Lang(raw))
 			continue
 		}
-		if err := s.store.SetSetting(sf.key, parseSettingValue(sf.key, raw)); err != nil {
+		if err := s.store.SetSetting(sf.key, coerceSettingValue(sf.key, raw)); err != nil {
 			return false, err
 		}
 	}
 	return langChanged, nil
 }
 
-// parseSettingValue coerces the raw string from the form into the setting's
-// canonical type. Currently only dailyLimit has typed handling.
-func parseSettingValue(key, raw string) any {
-	if key == "dailyLimit" {
+func (s *Settings) saveLanguage(raw string) (changed bool, err error) {
+	prev, _, _ := s.store.GetSetting(settingKeyLanguage)
+	if err := s.store.SetSetting(settingKeyLanguage, raw); err != nil {
+		return false, err
+	}
+	i18n.SetLang(i18n.Lang(raw))
+	return prev != raw, nil
+}
+
+// coerceSettingValue converts the raw string from the form into the setting's
+// canonical storage type. Currently only dailyLimit has typed handling; other
+// keys are stored verbatim.
+func coerceSettingValue(key, raw string) any {
+	if key == settingKeyDailyLimit {
 		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
 			return n
 		}

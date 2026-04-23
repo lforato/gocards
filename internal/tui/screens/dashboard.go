@@ -183,10 +183,10 @@ func (d *Dashboard) handleDeleteConfirm(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 		return d, nil
 	}
 	if err := d.store.DeleteDeck(target.ID); err != nil {
-		return d, tui.ToastErr("delete failed: " + err.Error())
+		return d, tui.ToastErr(i18n.T(i18n.KeyDeleteFailedPfx) + err.Error())
 	}
 	d.loaded = false
-	return d, tea.Batch(tui.Toast(fmt.Sprintf("deleted %q", target.Name)), d.load())
+	return d, tea.Batch(tui.Toast(i18n.Tf(i18n.KeyDeletedDeckFmt, target.Name)), d.load())
 }
 
 func (d *Dashboard) activate(entries []dashboardEntry) tea.Cmd {

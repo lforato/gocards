@@ -64,7 +64,7 @@ func TestCardsAndDue(t *testing.T) {
 	}
 
 	// After a strong review, card should no longer be due.
-	r := srs.CalculateNext(5, 2.5, 0)
+	r := srs.ScheduleNext(5, 2.5, 0)
 	if _, err := s.CreateReview(cards[0].ID, 5, r.Ease, r.Interval, r.NextDue); err != nil {
 		t.Fatal(err)
 	}

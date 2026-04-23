@@ -1,8 +1,8 @@
-// Package ai wraps the Anthropic SDK with the three stream-based
-// operations gocards needs: one-shot card generation, conversational
-// authoring, and answer grading. Prompt construction and panic-safe
+// Package ai wraps the Anthropic SDK with the stream-based operations
+// gocards needs: card generation, conversational authoring, answer
+// grading, and cheatsheet synthesis. Prompt construction and panic-safe
 // goroutine streaming live here so the TUI screens can consume plain
-// channels of Event.
+// channels of Event without knowing about the Anthropic SDK.
 package ai
 
 import (
@@ -56,21 +56,22 @@ func New(apiKey string) *Client {
 	return &Client{inner: anthropic.NewClient(option.WithAPIKey(apiKey))}
 }
 
+// streamBufferSize is large enough that normal token-rate streaming never
+// blocks on the receiver, but small enough that a stuck consumer doesn't
+// balloon memory. A goroutine writes chunks here; the caller reads.
+const streamBufferSize = 16
+
+// stream runs one Anthropic call in a goroutine and returns the Events as a
+// channel. Always emits exactly one terminal event (Err or Done) and then
+// closes the channel, so callers can range until close safely.
 func (c *Client) stream(ctx context.Context, system string, messages []anthropic.MessageParam, maxTokens int64) <-chan Event {
-	ch := make(chan Event, 16)
+	events := make(chan Event, streamBufferSize)
 
 	go func() {
-		defer close(ch)
-		defer func() {
-			if r := recover(); r != nil {
-				select {
-				case ch <- Event{Err: fmt.Errorf("stream panic: %v", r)}:
-				default:
-				}
-			}
-		}()
+		defer close(events)
+		defer reportPanicAsEvent(events)
 
-		stream := c.inner.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
+		response := c.inner.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 			Model:     Model,
 			MaxTokens: maxTokens,
 			System:    []anthropic.TextBlockParam{{Text: system}},
@@ -78,25 +79,53 @@ func (c *Client) stream(ctx context.Context, system string, messages []anthropic
 		})
 
 		var full strings.Builder
-		for stream.Next() {
-			event := stream.Current()
-			if ev, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
-				if td, ok := ev.Delta.AsAny().(anthropic.TextDelta); ok && td.Text != "" {
-					full.WriteString(td.Text)
-					select {
-					case ch <- Event{Chunk: td.Text}:
-					case <-ctx.Done():
-						return
-					}
-				}
+		for response.Next() {
+			chunk, ok := extractTextDelta(response.Current())
+			if !ok || chunk == "" {
+				continue
+			}
+			full.WriteString(chunk)
+			select {
+			case events <- Event{Chunk: chunk}:
+			case <-ctx.Done():
+				return
 			}
 		}
-		if err := stream.Err(); err != nil {
-			ch <- Event{Err: err}
+		if err := response.Err(); err != nil {
+			events <- Event{Err: err}
 			return
 		}
-		ch <- Event{Done: true, Full: full.String()}
+		events <- Event{Done: true, Full: full.String()}
 	}()
 
-	return ch
+	return events
+}
+
+// extractTextDelta returns the new text from a content-block-delta event, or
+// ("", false) for any other event type (tool calls, stop events, etc.).
+func extractTextDelta(raw anthropic.MessageStreamEventUnion) (string, bool) {
+	deltaEvent, ok := raw.AsAny().(anthropic.ContentBlockDeltaEvent)
+	if !ok {
+		return "", false
+	}
+	textDelta, ok := deltaEvent.Delta.AsAny().(anthropic.TextDelta)
+	if !ok {
+		return "", false
+	}
+	return textDelta.Text, true
+}
+
+// reportPanicAsEvent is deferred inside the streaming goroutine so an
+// unexpected panic surfaces as an Event.Err instead of killing the process.
+// The non-blocking select prevents a deadlock if the caller has already
+// stopped reading.
+func reportPanicAsEvent(events chan<- Event) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	select {
+	case events <- Event{Err: fmt.Errorf("stream panic: %v", r)}:
+	default:
+	}
 }

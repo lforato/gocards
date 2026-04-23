@@ -45,7 +45,7 @@ type AIGenerate struct {
 	store *store.Store
 	deck  models.Deck
 
-	history []models.GradingMessage
+	history []models.ChatMessage
 
 	pendingReply string
 	streaming    bool
@@ -121,8 +121,7 @@ func (g *AIGenerate) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 		return g, nil
 
 	case generateDecksLoadedMsg:
-		g.applyDecksLoaded(m)
-		return g, nil
+		return g, g.applyDecksLoaded(m)
 
 	case tui.LangChangedMsg:
 		return g, g.loadDecks()
@@ -166,17 +165,22 @@ func (g *AIGenerate) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	return g, nil
 }
 
-func (g *AIGenerate) applyDecksLoaded(m generateDecksLoadedMsg) {
+// applyDecksLoaded updates the deck picker with freshly loaded decks and
+// positions the cursor on the currently-active deck if it's still present.
+// Returns a toast command when the load failed so the user sees the error
+// instead of a silently-stale picker.
+func (g *AIGenerate) applyDecksLoaded(m generateDecksLoadedMsg) tea.Cmd {
 	if m.err != nil {
-		return
+		return tui.ToastErr(i18n.T(i18n.KeyErrorPrefix) + m.err.Error())
 	}
 	g.pickerDecks = m.decks
 	for i, d := range m.decks {
 		if d.ID == g.deck.ID {
 			g.pickerCursor = i
-			return
+			return nil
 		}
 	}
+	return nil
 }
 
 func (g *AIGenerate) finishStream(m streamDoneMsg) tea.Cmd {
@@ -185,7 +189,7 @@ func (g *AIGenerate) finishStream(m streamDoneMsg) tea.Cmd {
 		reply = g.pendingReply
 	}
 	g.streaming = false
-	g.history = append(g.history, models.GradingMessage{Role: "assistant", Content: reply})
+	g.history = append(g.history, models.ChatMessage{Role: models.RoleAssistant, Content: reply})
 	g.pendingReply = ""
 	g.refreshTranscript()
 	g.chatViewport.GotoBottom()
@@ -215,7 +219,7 @@ func (g *AIGenerate) submitChat(text string) (tui.Screen, tea.Cmd) {
 	}
 	g.input.GetBuffer().Clear()
 	g.fitInput()
-	g.history = append(g.history, models.GradingMessage{Role: "user", Content: text})
+	g.history = append(g.history, models.ChatMessage{Role: models.RoleUser, Content: text})
 	g.lastErr = nil
 	g.refreshTranscript()
 	g.chatViewport.GotoBottom()
@@ -454,7 +458,7 @@ func (g *AIGenerate) startStream() tea.Cmd {
 // rewindQueuedUserTurn drops the most recent user message when the send
 // fails so history doesn't stay out of sync with what Claude saw.
 func (g *AIGenerate) rewindQueuedUserTurn() {
-	if len(g.history) > 0 && g.history[len(g.history)-1].Role == "user" {
+	if len(g.history) > 0 && g.history[len(g.history)-1].Role == models.RoleUser {
 		g.history = g.history[:len(g.history)-1]
 	}
 }
@@ -512,14 +516,14 @@ func (g *AIGenerate) refreshTranscript() {
 		if b.Len() > 0 {
 			b.WriteString("\n\n")
 		}
-		b.WriteString(formatChatTurn("assistant", g.pendingReply, g.chatViewport.Width))
+		b.WriteString(formatChatTurn(models.RoleAssistant, g.pendingReply, g.chatViewport.Width))
 	}
 	g.chatViewport.SetContent(b.String())
 }
 
-func formatChatTurn(role, content string, width int) string {
+func formatChatTurn(role models.ChatRole, content string, width int) string {
 	tag := tui.StylePrimary.Render(i18n.T(i18n.KeyGenerateYouTag))
-	if role == "assistant" {
+	if role == models.RoleAssistant {
 		tag = tui.StyleAccent.Render(i18n.T(i18n.KeyGenerateClaudeTag))
 	}
 	body := lipgloss.NewStyle().Width(max(20, width)).Render(content)
