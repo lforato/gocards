@@ -1,124 +1,235 @@
-# gocards
+```
+                         ,_---~~~~~----._
+                  _,,_,*^____      _____``*g*\"*,
+                 / __/ /'     ^.  /      \ ^@q   f
+                [  @f | @))    |  | @))   l  0 _/
+                 \`/   \~____ / __ \_____/    \
+                  |           _l__l_           I
+                  }          [______]           I
+                  ]            | | |            |
+                  ]             ~ ~             |
+                  |                            |
+                   |                           |
 
-Terminal flashcards for developers — a Go / Bubble Tea port of the devcards
-web app. SQLite-backed, fully offline capable, with optional Anthropic-powered
-card generation and grading. Code answers are edited in `$EDITOR` (defaults to
-`vim`) with a bundled theme.
+         ██████╗  ██████╗  ██████╗ █████╗ ██████╗ ██████╗ ███████╗
+        ██╔════╝ ██╔═══██╗██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔════╝
+        ██║  ███╗██║   ██║██║     ███████║██████╔╝██║  ██║███████╗
+        ██║   ██║██║   ██║██║     ██╔══██║██╔══██╗██║  ██║╚════██║
+        ╚██████╔╝╚██████╔╝╚██████╗██║  ██║██║  ██║██████╔╝███████║
+         ╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚══════╝
+```
+
+**Terminal flashcards for developers.** A fast, offline-first TUI built with
+Go and Bubble Tea, backed by SQLite. Optional Anthropic integration generates
+and grades code / explanation cards; everything else works with no network.
+
+---
+
+## Why
+
+Most flashcard apps are built for vocabulary, not for code. `gocards` is
+designed around the things engineers actually study:
+
+- **Code cards** — write a solution in `$EDITOR` (vim by default) and get it
+  AI-graded against an expected answer.
+- **Explain cards** — annotate or describe a snippet in your own words; the
+  model grades the explanation.
+- **MCQ and fill-in-the-blank** — quick, offline, no tokens.
+- **Spaced repetition** — a port of the classic SM-2 scheduler picks what to
+  review next.
+- **Lives in your terminal** — no browser, no Electron, single ~25 MB binary.
+
+---
 
 ## Install
 
+### Precompiled binaries
+
+Grab the archive for your platform from the
+[Releases page](https://github.com/lforato/gocards/releases), extract it, and
+drop `gocards` somewhere on your `$PATH`:
+
 ```bash
+# macOS (Apple Silicon) — adapt the asset name for your OS/arch
+curl -L -o gocards.tar.gz \
+  https://github.com/lforato/gocards/releases/latest/download/gocards-darwin-arm64.tar.gz
+tar xzf gocards.tar.gz
+mv gocards /usr/local/bin/
+gocards
+```
+
+Binaries are built for **darwin/amd64**, **darwin/arm64**, **linux/amd64**,
+**linux/arm64**, and **windows/amd64**.
+
+### From source
+
+You need **Go 1.25+** and `make`. The SQLite driver is pure-Go (no CGO), so
+cross-compilation Just Works.
+
+```bash
+git clone https://github.com/lforato/gocards.git
 cd gocards
-go build -o gocards .
+make build         # produces ./gocards
 ./gocards
 ```
 
-Go 1.24+ required.
+`make install` puts the binary in `$GOBIN` (or `$GOPATH/bin`) so it's on your
+`$PATH` everywhere.
 
-## Data
+### With `go install`
 
-Persistence lives in `~/.gocards/`:
+```bash
+go install github.com/lforato/gocards/cmd/gocards@latest
+```
 
-| file | purpose |
+### Makefile targets
+
+| target | what it does |
 |---|---|
-| `gocards.db` | SQLite database (decks, cards, reviews, sessions, settings) |
-| `theme.vimrc` | vim colorscheme loaded via `-S` when opening code answers |
+| `make build` | Build `./gocards` for the current platform |
+| `make install` | `go install` into `$GOBIN` / `$GOPATH/bin` |
+| `make run` | Build then launch |
+| `make test` | Run the full test suite |
+| `make fmt` / `make vet` | Format and vet the module |
+| `make tidy` | `go mod tidy` |
+| `make release` | Cross-compile every supported OS/arch into `./dist` |
+| `make clean` | Remove `./gocards` and `./dist` |
+| `make help` | Print this list |
 
-The schema is migrated automatically on startup, and a small sample deck is
-seeded on first run.
+---
 
-## Configuration
+## First run
 
-Three settings are stored in the DB and editable from the in-app Settings
-screen:
+On first launch `gocards` creates `~/.gocards/` and seeds two **tutorial
+decks** — one in English, one in Portuguese — that walk through the
+controls and every card type. When you're comfortable, highlight a tutorial
+deck on the dashboard and press `D` to delete it. They won't come back.
 
-- **Daily review limit** (default 50)
-- **Preferred languages** (comma-separated, used by AI generation)
-- **Anthropic API key** (falls back to `ANTHROPIC_API_KEY` env var)
+---
 
-## Keys
+## Usage
+
+Start the app with `gocards`. The dashboard lists your decks and your
+review stats; everything else is a keypress away.
 
 ### Dashboard
+
 | key | action |
 |---|---|
-| `↑ ↓ / j k` | move cursor |
-| `enter` | open deck / action |
-| `S` | study selected deck |
-| `n` | new cards (AI or manual) |
+| `↑ ↓` / `j k` | move cursor |
+| `enter` | open deck |
+| `S` | study the selected deck |
+| `n` | new deck (manual or AI-assisted) |
+| `g` | AI-generate cards into an existing deck |
 | `s` | settings |
+| `D` | delete deck (asks `y` / `N`) |
 | `r` | reload |
 | `q` / `ctrl+c` | quit |
 
 ### Deck view
+
 | key | action |
 |---|---|
-| `enter` / `e` | edit selected card |
+| `↑ ↓` / `j k` | move cursor |
+| `enter` | edit selected card |
+| `space` / `a` | toggle selection for bulk ops |
 | `s` | study this deck |
+| `c` | open/generate a cheatsheet |
 | `n` | add card |
-| `d` / `x` | delete card (asks for confirmation) |
-| `esc` / `backspace` | back to dashboard |
+| `d` | delete selected cards |
+| `esc` | back to dashboard |
 
-### Study
-| key | action |
+### Study session
+
+| stage | keys |
 |---|---|
 | MCQ | `↑ ↓` pick · `enter` submit |
-| Fill | `tab` switch blank · `enter` submit |
-| Code / Exp | `e` open vim · on save, answer is graded by Claude |
-| `1-5` | override grader / manual grade |
-| `enter` | next card |
-| `esc` | end session |
+| Fill | `tab` next blank · `enter` submit |
+| Code / Explain | `ctrl+e` open vim · save to submit · Claude grades |
+| After answer | `1-4` rate recall · `ctrl+n` next · `ctrl+p` previous |
+| Any time | `ctrl+d` delete card · `esc` end session |
 
 ### Settings
+
 | key | action |
 |---|---|
 | `tab` | cycle fields |
 | `ctrl+s` | save |
 | `esc` | back |
 
+---
+
+## Configuration
+
+Settings are stored in SQLite and edited from the in-app settings screen:
+
+- **Daily review limit** — caps the number of cards per study session
+  (default `50`).
+- **Preferred languages** — comma-separated list fed to the AI when
+  generating cards (default `javascript,typescript,python`).
+- **Anthropic API key** — needed for AI generation and code grading.
+  Falls back to the `ANTHROPIC_API_KEY` environment variable if unset.
+- **Language** — `en` or `pt-BR`. Drives all UI strings and the language
+  instruction passed to the AI.
+
+Without an API key everything still works except AI generation and AI
+grading; you can grade code/explain cards manually with `1-4`.
+
+---
+
+## Data directory
+
+Everything persistent lives under `~/.gocards/`:
+
+| file | purpose |
+|---|---|
+| `gocards.db` | SQLite database (decks, cards, reviews, sessions, settings) |
+| `theme.vimrc` | vim colorscheme auto-loaded when opening code answers |
+
+The schema is applied and migrated on every startup; deleting `gocards.db`
+resets the app to a clean install (tutorial decks will be re-seeded).
+
+---
+
+## Card types
+
+| type | how you answer | graded by |
+|---|---|---|
+| `mcq` | pick one of the choices | exact match |
+| `fill` | fill each blank inline | exact match |
+| `code` | write a solution from scratch in vim | Claude (or manual `1-4`) |
+| `exp` | annotate a pre-filled snippet with comments | Claude (or manual `1-4`) |
+
+---
+
 ## Architecture
 
 ```
 gocards/
-├── main.go                      # entry
+├── cmd/gocards/        # entry point
 ├── internal/
-│   ├── db/                      # sqlite open + embedded schema + seed
-│   ├── models/                  # domain types mirroring shared/types.ts
-│   ├── store/                   # queries (decks, cards, reviews, sessions, stats)
-│   ├── srs/                     # port of the JS SRS algorithm
-│   ├── ai/                      # streaming wrapper around anthropic-sdk-go
-│   ├── editor/                  # tea.ExecProcess-based vim launcher with theme
-│   └── tui/
-│       ├── app.go               # root screen stack
-│       ├── styles.go            # lipgloss palette
-│       ├── heatmap.go           # 13-week activity grid
-│       ├── dashboard.go         # stats + deck list
-│       ├── deck.go              # card list inside a deck
-│       ├── study.go             # review loop (mcq / fill / code / exp)
-│       ├── create.go            # AI generation + bulk insert
-│       ├── edit.go              # single-card editor
-│       └── settings.go          # key-value settings
+│   ├── db/             # sqlite open, embedded schema, migrations, seed
+│   ├── models/         # domain types + card-kind registry
+│   ├── store/          # queries (decks, cards, reviews, sessions, stats)
+│   ├── srs/            # SM-2 spaced-repetition scheduler
+│   ├── ai/             # streaming wrapper around anthropic-sdk-go
+│   ├── i18n/           # per-locale string tables (en, pt-BR)
+│   └── tui/            # Bubble Tea screens and widgets
+└── Makefile
 ```
 
-## Card types
+---
 
-| type | UI |
-|---|---|
-| `mcq` | choose one of the offered choices |
-| `fill` | fill each blank inline |
-| `code` | write a solution from scratch in vim |
-| `exp` | annotate the pre-filled code block with comments in vim |
-
-`code` and `exp` cards are graded by Claude when an API key is set; without a
-key you grade yourself with `1-5`.
-
-## Vim theme
-
-On first run `~/.gocards/theme.vimrc` is written. It's auto-loaded via `-S`
-whenever the external editor is `vim` / `nvim` / `vi`. Delete the file to
-regenerate after edits are made in the binary.
-
-## Tests
+## Development
 
 ```bash
-go test ./...
+make test    # go test ./...
+make fmt     # gofmt -s -w .
+make vet     # go vet ./...
+make tidy    # go mod tidy
+make release # cross-compile into ./dist
 ```
+
+The store package has the bulk of the unit tests; new queries or
+migrations should land with matching coverage in
+`internal/store/store_test.go`.

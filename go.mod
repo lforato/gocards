@@ -2,15 +2,13 @@ module github.com/lforato/gocards
 
 go 1.25.0
 
-replace github.com/lforato/vimtea => ../vimtea
-
 require (
 	github.com/anthropics/anthropic-sdk-go v1.37.0
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
-	github.com/lforato/vimtea v0.0.3-0.20260421233109-563a2e156427
+	github.com/lforato/vimtea v0.0.3
 	golang.design/x/clipboard v0.7.0
 	modernc.org/sqlite v1.49.1
 )

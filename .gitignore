@@ -1,2 +1,3 @@
 gocards
 *.db
+dist/
