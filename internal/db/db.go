@@ -1,6 +1,6 @@
 // Package db owns the SQLite connection lifecycle: opening (or creating)
 // the database file under ~/.gocards/, applying the embedded schema,
-// running idempotent migrations, and seeding a starter deck on first run.
+// running idempotent migrations, and seeding tutorial decks on first run.
 // Returns a ready-to-use *sql.DB for the store package to consume.
 package db
 
