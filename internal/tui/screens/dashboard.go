@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lforato/gocards/internal/i18n"
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
 	"github.com/lforato/gocards/internal/tui"
@@ -85,7 +86,8 @@ func loadDashboardStats(s *store.Store) (dashboardStats, error) {
 	if err != nil {
 		return dashboardStats{}, err
 	}
-	due, err := s.DueToday()
+	lang := string(i18n.CurrentLang())
+	due, err := s.DueTodayByLanguage(lang)
 	if err != nil {
 		return dashboardStats{}, err
 	}
@@ -93,7 +95,7 @@ func loadDashboardStats(s *store.Store) (dashboardStats, error) {
 	if err != nil {
 		return dashboardStats{}, err
 	}
-	decks, err := s.DeckSummaries()
+	decks, err := s.DeckSummariesByLanguage(lang)
 	if err != nil {
 		return dashboardStats{}, err
 	}
@@ -123,6 +125,8 @@ func (d *Dashboard) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 		d.loaded = true
 		d.err = m.err
 		d.stats = m.stats
+	case tui.LangChangedMsg:
+		return d, d.load()
 	case tea.KeyMsg:
 		return d.handleKey(m)
 	}
@@ -237,10 +241,10 @@ func (d *Dashboard) preferredGenerateDeck() models.Deck {
 
 func (d *Dashboard) View() string {
 	if !d.loaded {
-		return tui.StyleMuted.Render("loading…")
+		return tui.StyleMuted.Render(i18n.T(i18n.KeyDashboardLoading))
 	}
 	if d.err != nil {
-		return tui.StyleDanger.Render("error: " + d.err.Error())
+		return tui.StyleDanger.Render(i18n.T(i18n.KeyErrorPrefix) + d.err.Error())
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
@@ -257,19 +261,17 @@ func (d *Dashboard) View() string {
 }
 
 func (d *Dashboard) renderDeletePrompt() string {
-	return tui.StyleDanger.Render(fmt.Sprintf(
-		"delete deck %q and all its cards? y/N", d.pendingDelete.Name,
-	))
+	return tui.StyleDanger.Render(i18n.Tf(i18n.KeyDashboardDeleteConfirm, d.pendingDelete.Name))
 }
 
 func (d *Dashboard) renderStats() string {
 	width := (d.w / 4) - 4
 	s := d.stats
 	return lipgloss.JoinHorizontal(lipgloss.Top,
-		statBox("streak", fmt.Sprintf("%dd", s.streak), width), "  ",
-		statBox("reviewed", fmt.Sprintf("%d", s.reviewed), width), "  ",
-		statBox("retention", fmt.Sprintf("%d%%", s.retention), width), "  ",
-		statBox("due today", fmt.Sprintf("%d", s.due), width),
+		statBox(i18n.T(i18n.KeyStatStreak), fmt.Sprintf("%dd", s.streak), width), "  ",
+		statBox(i18n.T(i18n.KeyStatReviewed), fmt.Sprintf("%d", s.reviewed), width), "  ",
+		statBox(i18n.T(i18n.KeyStatRetention), fmt.Sprintf("%d%%", s.retention), width), "  ",
+		statBox(i18n.T(i18n.KeyStatDueToday), fmt.Sprintf("%d", s.due), width),
 	)
 }
 
@@ -289,11 +291,11 @@ func (d *Dashboard) renderHeatmap() string {
 func (d *Dashboard) renderEntries() string {
 	entries := d.entries()
 	rows := []string{
-		renderActionRow("+ New cards", "n", d.cursor == 0),
-		renderActionRow("🤖 Generate with AI", "g", d.cursor == 1),
-		renderActionRow("⚙ Settings", "s", d.cursor == 2),
+		renderActionRow(i18n.T(i18n.KeyActionNewCards), "n", d.cursor == 0),
+		renderActionRow(i18n.T(i18n.KeyActionGenerateAI), "g", d.cursor == 1),
+		renderActionRow(i18n.T(i18n.KeyActionSettings), "s", d.cursor == 2),
 		"",
-		tui.StyleMuted.Render(fmt.Sprintf("decks · %d", len(d.stats.decks))),
+		tui.StyleMuted.Render(i18n.Tf(i18n.KeyDashboardDeckCount, len(d.stats.decks))),
 	}
 	for i, e := range entries {
 		if e.kind != entryDeck {
@@ -311,7 +313,7 @@ func renderDeckRow(deck models.DeckWithCounts, selected bool) string {
 	}
 	due := ""
 	if deck.DueCount > 0 {
-		due = "  " + tui.StylePrimary.Render(fmt.Sprintf("%d due", deck.DueCount))
+		due = "  " + tui.StylePrimary.Render(i18n.Tf(i18n.KeyDeckRowDue, deck.DueCount))
 	}
 	return fmt.Sprintf("%s%s %s  %s%s",
 		selectionPrefix(selected),
@@ -324,9 +326,22 @@ func renderDeckRow(deck models.DeckWithCounts, selected bool) string {
 
 func (d *Dashboard) HelpKeys() []string {
 	if d.pendingDelete != nil {
-		return []string{"y delete", "N cancel"}
+		return []string{
+			i18n.Help("y", i18n.KeyHelpYDelete),
+			i18n.Help("N", i18n.KeyHelpNCancel),
+		}
 	}
-	return []string{"↑/↓ select", "enter open", "S study", "D delete", "n new", "g ai", "s settings", "r reload", "q quit"}
+	return []string{
+		i18n.Help("↑/↓", i18n.KeyHelpSelect),
+		i18n.Help("enter", i18n.KeyHelpOpen),
+		i18n.Help("S", i18n.KeyHelpStudy),
+		i18n.Help("D", i18n.KeyHelpDelete),
+		i18n.Help("n", i18n.KeyHelpNew),
+		i18n.Help("g", i18n.KeyHelpAI),
+		i18n.Help("s", i18n.KeyHelpSettings),
+		i18n.Help("r", i18n.KeyHelpReload),
+		i18n.Help("q", i18n.KeyHelpQuit),
+	}
 }
 
 func statBox(label, value string, w int) string {

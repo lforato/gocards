@@ -31,6 +31,7 @@ type Deck struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Color       string    `json:"color"`
+	Language    string    `json:"language"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 

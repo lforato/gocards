@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lforato/gocards/internal/i18n"
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
 	"github.com/lforato/gocards/internal/tui"
@@ -15,10 +16,10 @@ const previewMaxLines = 10
 
 func previewCard(in store.CardInput, width int) string {
 	rows := []string{
-		tui.StyleMuted.Render("type") + "  " + typeBadge(in.Type, true) + "   " +
-			tui.StyleMuted.Render("lang") + "  " + in.Language,
+		tui.StyleMuted.Render(i18n.T(i18n.KeyGeneratePrevType)) + "  " + typeBadge(in.Type, true) + "   " +
+			tui.StyleMuted.Render(i18n.T(i18n.KeyGeneratePrevLang)) + "  " + in.Language,
 		"",
-		tui.StyleMuted.Render("prompt"),
+		tui.StyleMuted.Render(i18n.T(i18n.KeyGeneratePrevPrompt)),
 		previewBlock(in.Prompt, "(empty)", width),
 	}
 	rows = append(rows, cardSpecificPreview(in, width)...)
@@ -38,7 +39,7 @@ func cardSpecificPreview(in store.CardInput, width int) []string {
 }
 
 func previewMCQChoices(choices []models.Choice) []string {
-	rows := []string{"", tui.StyleMuted.Render("choices")}
+	rows := []string{"", tui.StyleMuted.Render(i18n.T(i18n.KeyGeneratePrevChoices))}
 	for _, ch := range choices {
 		mark := "[ ]"
 		if ch.IsCorrect {
@@ -54,9 +55,9 @@ func previewFillTemplate(blanks *models.BlankData, width int) []string {
 		return nil
 	}
 	return []string{
-		"", tui.StyleMuted.Render("template"),
+		"", tui.StyleMuted.Render(i18n.T(i18n.KeyGeneratePrevTmpl)),
 		previewBlock(blanks.Template, "(empty)", width),
-		"", tui.StyleMuted.Render("blanks: " + strings.Join(blanks.Blanks, ", ")),
+		"", tui.StyleMuted.Render(i18n.T(i18n.KeyGeneratePrevBlanks) + strings.Join(blanks.Blanks, ", ")),
 	}
 }
 
@@ -64,7 +65,7 @@ func previewExpected(expected string, width int) []string {
 	if expected == "" {
 		return nil
 	}
-	return []string{"", tui.StyleMuted.Render("expected answer"), previewBlock(expected, "", width)}
+	return []string{"", tui.StyleMuted.Render(i18n.T(i18n.KeyGeneratePrevExpect)), previewBlock(expected, "", width)}
 }
 
 // previewBlock wraps content in a rounded border constrained to totalWidth.

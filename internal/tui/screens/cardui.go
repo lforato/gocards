@@ -5,44 +5,84 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lforato/gocards/internal/i18n"
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/tui"
 )
 
 // cardUI is the screen-side companion to models.CardKind: theme color,
-// question-stage help keys, answered-stage help keys. Adding a new card
-// type means adding one entry here on top of models.cardKinds.
+// help-row builders, editor field list. QuestionFn/AnsweredFn are funcs so
+// the returned strings can be i18n-resolved at render time (the current
+// language may change without a restart).
 type cardUI struct {
-	Color        lipgloss.Color
-	QuestionHelp []string
-	AnsweredHelp []string
-	EditFields   []editField
+	Color      lipgloss.Color
+	QuestionFn func() []string
+	AnsweredFn func() []string
+	EditFields []editField
+}
+
+// questionHelpMCQ etc. are funcs so translation lookups happen at call
+// time — the current language may change without a restart.
+func questionHelpMCQ() []string {
+	return []string{
+		i18n.Help("↑/↓", i18n.KeyHelpPick),
+		i18n.Help("enter", i18n.KeyHelpSubmit),
+		i18n.Help("esc", i18n.KeyHelpEnd),
+	}
+}
+func answeredHelpMCQ() []string {
+	return []string{i18n.Help("esc", i18n.KeyHelpEnd)}
+}
+func questionHelpCode() []string {
+	return []string{
+		i18n.Help("i", i18n.KeyHelpInsert),
+		i18n.Help("esc", i18n.KeyHelpNormal),
+		i18n.Help("ctrl+s", i18n.KeyHelpSubmit),
+		i18n.Help("esc", i18n.KeyHelpEscEnd),
+	}
+}
+func answeredHelpCode() []string {
+	return []string{
+		i18n.Help("ctrl+s", i18n.KeyHelpSend),
+		i18n.Help("shift+↑/↓", i18n.KeyHelpScroll),
+		i18n.Help("esc", i18n.KeyHelpEscEnd),
+	}
+}
+func questionHelpFill() []string {
+	return []string{
+		i18n.Help("tab", i18n.KeyHelpCycle),
+		i18n.Help("enter", i18n.KeyHelpSubmit),
+		i18n.Help("esc", i18n.KeyHelpEnd),
+	}
+}
+func answeredHelpFill() []string {
+	return []string{i18n.Help("esc", i18n.KeyHelpEnd)}
 }
 
 var cardUIs = map[models.CardType]cardUI{
 	models.CardMCQ: {
-		Color:        tui.ColorAccent,
-		QuestionHelp: []string{"↑/↓ pick", "enter submit", "esc end"},
-		AnsweredHelp: []string{"enter next", "esc end"},
-		EditFields:   []editField{fType, fLanguage, fPrompt, fChoices},
+		Color:       tui.ColorAccent,
+		QuestionFn:  questionHelpMCQ,
+		AnsweredFn:  answeredHelpMCQ,
+		EditFields:  []editField{fType, fLanguage, fPrompt, fChoices},
 	},
 	models.CardCode: {
-		Color:        tui.ColorSuccess,
-		QuestionHelp: []string{"i insert", "esc normal", "ctrl+s submit", "esc end (from normal)"},
-		AnsweredHelp: []string{"1-5 override", "enter next", "esc end"},
-		EditFields:   []editField{fLanguage, fPrompt, fInitialCode, fExpected},
+		Color:       tui.ColorSuccess,
+		QuestionFn:  questionHelpCode,
+		AnsweredFn:  answeredHelpCode,
+		EditFields:  []editField{fLanguage, fPrompt, fInitialCode, fExpected},
 	},
 	models.CardFill: {
-		Color:        tui.ColorWarn,
-		QuestionHelp: []string{"tab switch", "enter submit", "esc end"},
-		AnsweredHelp: []string{"enter next", "esc end"},
-		EditFields:   []editField{fType, fLanguage, fPrompt, fTemplate},
+		Color:       tui.ColorWarn,
+		QuestionFn:  questionHelpFill,
+		AnsweredFn:  answeredHelpFill,
+		EditFields:  []editField{fType, fLanguage, fPrompt, fTemplate},
 	},
 	models.CardExp: {
-		Color:        tui.ColorPrimary,
-		QuestionHelp: []string{"i insert", "esc normal", "ctrl+s submit", "esc end (from normal)"},
-		AnsweredHelp: []string{"1-5 override", "enter next", "esc end"},
-		EditFields:   []editField{fType, fLanguage, fPrompt, fExpected},
+		Color:       tui.ColorPrimary,
+		QuestionFn:  questionHelpCode,
+		AnsweredFn:  answeredHelpCode,
+		EditFields:  []editField{fType, fLanguage, fPrompt, fExpected},
 	},
 }
 

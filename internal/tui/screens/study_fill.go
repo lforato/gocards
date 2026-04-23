@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lforato/gocards/internal/i18n"
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/tui"
 )
@@ -63,7 +64,7 @@ func (s *Study) focusFillInput(next int) {
 // typos don't fail an otherwise-correct answer.
 func (s *Study) submitFill(card *models.Card) (tui.Screen, tea.Cmd) {
 	if card.BlanksData == nil || len(card.BlanksData.Blanks) != len(s.fillInputs) {
-		return s, tui.ToastErr("fill card is malformed — skipping")
+		return s, tui.ToastErr(i18n.T(i18n.KeyStudyFillMalformed))
 	}
 	partial := 0
 	for i, ti := range s.fillInputs {
@@ -105,11 +106,11 @@ func (s *Study) viewFill(card *models.Card) string {
 	}
 
 	rows := []string{
-		renderPrompt(card.Prompt),
+		renderPrompt(card.Prompt, s.w),
 		"",
 		codeBox(template),
 		"",
-		tui.StyleMuted.Render("blanks:"),
+		tui.StyleMuted.Render(i18n.T(i18n.KeyStudyFillBlanks)),
 	}
 	for i := range s.fillInputs {
 		prefix := "  "
@@ -121,9 +122,9 @@ func (s *Study) viewFill(card *models.Card) string {
 	rows = append(rows, "")
 
 	if s.stage == stageAnswered {
-		rows = append(rows, tui.StylePrimary.Render(fmt.Sprintf("→ %s  (grade %d)", s.resultNote, s.resultGrade)))
+		rows = append(rows, tui.StylePrimary.Render(i18n.Tf(i18n.KeyStudyMCQResult, s.resultNote, s.resultGrade)))
 		if card.BlanksData != nil {
-			rows = append(rows, tui.StyleMuted.Render("answers: "+strings.Join(card.BlanksData.Blanks, ", ")))
+			rows = append(rows, tui.StyleMuted.Render(i18n.T(i18n.KeyStudyFillAnswers)+strings.Join(card.BlanksData.Blanks, ", ")))
 		}
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)

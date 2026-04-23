@@ -20,6 +20,7 @@ func seedDefaultSettings(conn *sql.DB) error {
 		"dailyLimit":         50,
 		"preferredLanguages": "javascript,typescript,python",
 		"apiKey":             "",
+		"language":           "en",
 	}
 	for k, v := range defaults {
 		raw, _ := json.Marshal(v)
@@ -42,11 +43,11 @@ func decksExist(conn *sql.DB) (bool, error) {
 }
 
 func seedSampleCards(conn *sql.DB) error {
-	jsID, err := insertDeck(conn, "JavaScript Fundamentals", "Core JS concepts every dev should know", "#f59e0b")
+	jsID, err := insertDeck(conn, "JavaScript Fundamentals", "Core JS concepts every dev should know", "#f59e0b", "en")
 	if err != nil {
 		return err
 	}
-	reactID, err := insertDeck(conn, "React Hooks", "useEffect, useMemo, useCallback edge cases", "#3b82f6")
+	reactID, err := insertDeck(conn, "React Hooks", "useEffect, useMemo, useCallback edge cases", "#3b82f6", "en")
 	if err != nil {
 		return err
 	}
@@ -98,10 +99,10 @@ func seedSampleCards(conn *sql.DB) error {
 	return nil
 }
 
-func insertDeck(conn *sql.DB, name, desc, color string) (int64, error) {
+func insertDeck(conn *sql.DB, name, desc, color, language string) (int64, error) {
 	res, err := conn.Exec(
-		`INSERT INTO decks(name, description, color) VALUES(?, ?, ?)`,
-		name, desc, color,
+		`INSERT INTO decks(name, description, color, language) VALUES(?, ?, ?, ?)`,
+		name, desc, color, language,
 	)
 	if err != nil {
 		return 0, err

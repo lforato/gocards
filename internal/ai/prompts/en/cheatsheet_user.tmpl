@@ -1,0 +1,20 @@
+Deck: {{.DeckName}}
+{{if .DeckDescription}}Description: {{.DeckDescription}}
+{{end}}
+The cards below are grouped by the reader's current struggle tier, hardest first. Preserve this grouping and order when you write the cheatsheet.
+
+{{range $tIdx, $tier := .Tiers}}=== Tier {{add $tIdx 1}}: {{$tier.Tier.Emoji}} {{$tier.Tier.Label}} ({{len $tier.Cards}} card{{if ne (len $tier.Cards) 1}}s{{end}}) ===
+
+{{range $i, $cc := $tier.Cards}}--- Card [{{$cc.Card.Type}}{{if $cc.Card.Language}} · {{$cc.Card.Language}}{{end}}] | reviews: {{$cc.Stats.ReviewCount}}, avg grade: {{printf "%.1f" $cc.Stats.AvgGrade}}, fails: {{$cc.Stats.FailCount}} ---
+Prompt:
+{{$cc.Card.Prompt}}
+{{if $cc.Card.ExpectedAnswer}}Reference answer:
+{{$cc.Card.ExpectedAnswer}}
+{{end}}{{if $cc.Card.Choices}}Choices:
+{{range $cc.Card.Choices}}- {{if .IsCorrect}}(correct) {{end}}{{.Text}}
+{{end}}{{end}}{{if $cc.Card.BlanksData}}Template:
+{{$cc.Card.BlanksData.Template}}
+Blanks: {{join $cc.Card.BlanksData.Blanks ", "}}
+{{end}}
+{{end}}
+{{end}}

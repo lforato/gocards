@@ -10,37 +10,11 @@ import (
 	"github.com/lforato/gocards/internal/tui"
 )
 
-// renderPrompt renders plain text as-is and fenced code blocks inside a
-// codeBox. Unclosed fences are rendered as a final code block.
-func renderPrompt(p string) string {
-	var out []string
-	var codeBuf []string
-	inCode := false
-
-	flush := func() {
-		if len(codeBuf) == 0 {
-			return
-		}
-		out = append(out, codeBox(strings.Join(codeBuf, "\n")))
-		codeBuf = nil
-	}
-
-	for _, ln := range strings.Split(p, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(ln), "```") {
-			if inCode {
-				flush()
-			}
-			inCode = !inCode
-			continue
-		}
-		if inCode {
-			codeBuf = append(codeBuf, ln)
-		} else {
-			out = append(out, ln)
-		}
-	}
-	flush()
-	return strings.Join(out, "\n")
+// renderPrompt formats a card prompt through glamour for terminal markdown
+// rendering (headings, code blocks, lists, emphasis). Width governs word
+// wrap so long lines don't overflow the frame.
+func renderPrompt(p string, width int) string {
+	return renderMarkdown(p, width)
 }
 
 func codeBox(s string) string {

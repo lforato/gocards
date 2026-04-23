@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lforato/gocards/internal/i18n"
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/tui"
 )
@@ -47,7 +48,7 @@ func (e *Edit) toggleChoiceCorrect() {
 
 func (e *Edit) addChoice() (tui.Screen, tea.Cmd) {
 	if len(e.card.Choices) >= maxMCQChoices {
-		return e, tui.ToastErr(fmt.Sprintf("max %d choices", maxMCQChoices))
+		return e, tui.ToastErr(i18n.Tf(i18n.KeyEditMaxChoices, maxMCQChoices))
 	}
 	e.card.Choices = append(e.card.Choices, models.Choice{})
 	e.choiceCursor = len(e.card.Choices) - 1
@@ -99,7 +100,7 @@ func (e *Edit) stopChoiceEdit() {
 
 func (e *Edit) viewChoices() string {
 	if len(e.card.Choices) == 0 && !e.choiceEditing {
-		return tui.StyleMuted.Render("  (no choices — press a to add)")
+		return tui.StyleMuted.Render(i18n.T(i18n.KeyEditNoChoicesHint))
 	}
 	var lines []string
 	for i, ch := range e.card.Choices {
@@ -117,7 +118,7 @@ func (e *Edit) renderChoiceRow(i int, ch models.Choice) string {
 	if e.choiceEditing && e.choiceEditIdx == i {
 		text = e.choiceInput.View()
 	} else if text == "" {
-		text = tui.StyleMuted.Render("(empty)")
+		text = tui.StyleMuted.Render(i18n.T(i18n.KeyEditEmptyChoice))
 	}
 	selected := i == e.choiceCursor && e.focus == fChoices
 	return fmt.Sprintf("%s%s %s. %s", selectionPrefix(selected), mark, string(rune('a'+i)), text)

@@ -1,140 +1,156 @@
 package ai
 
 import (
+	"bytes"
+	"embed"
 	"fmt"
 	"strings"
+	"text/template"
+
+	"github.com/lforato/gocards/internal/i18n"
 )
+
+//go:embed prompts/*/*.tmpl
+var promptFS embed.FS
+
+// templatesByLang holds one parsed template set per supported language.
+// The English set is the fallback when renderTemplate can't find a
+// localized variant, so every prompt keeps working even if a translation
+// lags behind.
+var templatesByLang = func() map[i18n.Lang]*template.Template {
+	out := make(map[i18n.Lang]*template.Template, len(i18n.Supported))
+	for _, lang := range i18n.Supported {
+		t := template.Must(
+			template.New("prompts-" + string(lang)).
+				Funcs(template.FuncMap{
+					"add":  func(a, b int) int { return a + b },
+					"join": strings.Join,
+				}).
+				ParseFS(promptFS, "prompts/"+string(lang)+"/*.tmpl"),
+		)
+		out[lang] = t
+	}
+	return out
+}()
+
+// renderTemplate looks up the named template in the current-language set,
+// falling back to the default language when the current locale either
+// lacks the whole set (shouldn't happen at build time) or lacks that
+// specific file.
+func renderTemplate(name string, data any) string {
+	lang := i18n.CurrentLang()
+	if set, ok := templatesByLang[lang]; ok {
+		if out, ok := executeOptional(set, name, data); ok {
+			return out
+		}
+	}
+	if lang != i18n.DefaultLang {
+		if set, ok := templatesByLang[i18n.DefaultLang]; ok {
+			if out, ok := executeOptional(set, name, data); ok {
+				return out
+			}
+		}
+	}
+	panic(fmt.Errorf("render prompt %s: no template registered for lang %q or fallback", name, lang))
+}
+
+func executeOptional(set *template.Template, name string, data any) (string, bool) {
+	if set.Lookup(name) == nil {
+		return "", false
+	}
+	var buf bytes.Buffer
+	if err := set.ExecuteTemplate(&buf, name, data); err != nil {
+		panic(fmt.Errorf("render prompt %s: %w", name, err))
+	}
+	return buf.String(), true
+}
 
 func chatSystem(deckName, deckDescription string) string {
 	desc := deckDescription
 	if strings.TrimSpace(desc) == "" {
 		desc = "(no description)"
 	}
-	return fmt.Sprintf(`You are a programming tutor collaborating with a developer to build flashcards for spaced-repetition study.
-
-You are adding cards to the deck "%s" — %s.
-
-Conversation style:
-- Keep your replies SHORT (≤3 short paragraphs or ≤6 bullet points of markdown). Don't lecture.
-- Ask clarifying questions only when the user's request is genuinely ambiguous. Otherwise just start generating cards.
-- When the user confirms or gives you a concrete topic, draft cards right away.
-
-Emitting cards:
-- When you are ready to propose cards, include one <card>...</card> JSON block PER card inline in your reply.
-- The JSON inside each <card> tag must match this schema exactly:
-  {
-    "type": "mcq" | "code" | "fill" | "exp",
-    "language": "javascript",
-    "prompt": "...",
-    "expected_answer": "...",
-    "choices": [{"id":"a","text":"...","isCorrect":false}, ...],   // MCQ only
-    "blanks_data": {"template": "... ___BLANK___ ...", "blanks": ["value"]}  // fill only
-  }
-- Use real newlines inside the JSON (not \n escapes) — our parser reads the raw block.
-- You may write a short intro sentence before the cards and a brief outro afterwards, but do NOT put code fences around the <card> tags.
-- Don't repeat cards you've already proposed in earlier turns.
-- Mix card types when it makes pedagogical sense.
-
-Card-type semantics (same as the standalone generator):
-- "mcq": 3-4 "choices" with exactly one isCorrect=true.
-- "code": student writes code from scratch. expected_answer is a clean reference solution.
-- "fill": student edits a template in place. blanks_data.template uses ___BLANK___ tokens; blanks[] holds canonical replacements in order.
-- "exp": student annotates a code block with inline comments. prompt includes the question + fenced code (4-15 lines); expected_answer is a reference prose explanation (3-6 sentences).
-
-Rules for "prompt":
-- The prompt is the ONLY text the student sees at study time.
-- If the question references code, include the full code literally inside the prompt in a fenced code block.`, deckName, desc)
+	return renderTemplate("chat_system.tmpl", struct {
+		DeckName        string
+		DeckDescription string
+	}{DeckName: deckName, DeckDescription: desc})
 }
 
 func generateSystem(preferredLanguages string) string {
 	if preferredLanguages == "" {
 		preferredLanguages = "javascript, typescript"
 	}
-	return fmt.Sprintf(`You are a flashcard generator for developers. Generate 3-5 flashcards based on the topic.
-
-Preferred languages: %s
-
-Return ONLY a JSON array of cards in this exact format, no markdown:
-[
-  {
-    "type": "mcq" | "code" | "fill" | "exp",
-    "language": "javascript",
-    "prompt": "question text",
-    "expected_answer": "correct answer or code or reference explanation",
-    "choices": [{"id":"a","text":"...","isCorrect":false}, ...],  // only for mcq
-    "blanks_data": {"template": "code with ___BLANK___", "blanks": ["value"]}  // only for fill
-  }
-]
-
-Mix card types.
-
-Card type semantics:
-- "mcq": multiple-choice. Include 3-4 "choices" with exactly one isCorrect=true.
-- "code": student writes code from scratch. expected_answer is a clean reference solution.
-- "fill": student edits a code template directly, replacing each ___BLANK___ marker in place. blanks_data has the template (using ___BLANK___ tokens) and blanks[] with the canonical replacement values in order. Prefer blanks that are short identifiers, enum values, or single expressions.
-- "exp": student ANNOTATES a code block with inline comments to explain what it does. The prompt MUST contain a natural-language question followed by a fenced code block of 4-15 lines. expected_answer is a reference prose explanation (3-6 sentences) used only by the grader.
-
-CRITICAL rules for "prompt":
-- The prompt is the ONLY text the student sees. They do not see expected_answer.
-- If your question references code, include the full code literally INSIDE the prompt using a fenced code block.
-- Newlines inside strings must be \n.
-
-Rules for "expected_answer":
-- For code cards, give a clean reference solution.
-- For fill cards, a short human-readable description; the authoritative answer lives in blanks_data.blanks.
-- For mcq cards, the correct choice text or a one-sentence explanation.
-- Always include this field, even for fill cards.`, preferredLanguages)
+	return renderTemplate("generate_system.tmpl", struct {
+		PreferredLanguages string
+	}{PreferredLanguages: preferredLanguages})
 }
 
 // gradeSystem selects between two rubrics: explanation-mode grades
 // student-authored comments; code-mode grades a full solution.
 func gradeSystem(in GradeInput) string {
+	name := "grade_code.tmpl"
 	if in.Mode == "explanation" {
-		return fmt.Sprintf(`You are a terse programming tutor grading a student's INLINE COMMENTS added to a code block.
-
-Question (includes the original code block): %s
-Reference explanation (your internal rubric — never reveal or quote verbatim): %s
-
-Internally assess:
-- Does each non-trivial line or block have a comment that correctly explains it?
-- Are the comments accurate? Do they capture intent, mechanics, side effects, and any non-obvious choices?
-- Do any comments just restate code verbatim or contain factual errors?
-
-OUTPUT RULES — the student reads this directly:
-- Do NOT write "the student did X" or any meta-assessment.
-- Do NOT praise. No "Good job", no "solid understanding", no summaries of what was correct.
-- Address the student in second person ("you").
-- Only surface what was MISSING or WRONG. If a part was correct, say nothing about it.
-- Use a short bulleted list. Reference specific lines or concepts. Max 4 bullets, each one sentence.
-- If nothing was wrong and nothing important was missed, output a single line: "Nothing missing." then the grade lines.
-- Do not include any preamble, heading, or closing sentence.
-- You may ask ONE targeted follow-up question ONLY if what is missing is ambiguous; otherwise do not ask follow-ups.
-
-On the LAST TWO LINES of your response, write these two lines in this EXACT format (no bold, no backticks, no extra punctuation):
-FINAL_GRADE: N
-VERDICT: V
-
-where N is a digit 1-5 and V is EXACTLY one of these four strings: Wrong | Partially correct | Correct | Excellent
-
-Grade-to-verdict mapping:
-- 1 or 2 → Wrong
-- 3 → Partially correct
-- 4 → Correct
-- 5 → Excellent`, in.Prompt, in.ExpectedAnswer)
+		name = "grade_explanation.tmpl"
 	}
-	return fmt.Sprintf(`You are a concise programming tutor grading a student's coding answer.
+	return renderTemplate(name, struct {
+		Prompt         string
+		ExpectedAnswer string
+	}{Prompt: in.Prompt, ExpectedAnswer: in.ExpectedAnswer})
+}
 
-Question: %s
-Expected approach: %s
+func cheatsheetSystem() string {
+	return renderTemplate("cheatsheet_system.tmpl", nil)
+}
 
-Grade 1-5:
-1 = Wrong
-2 = Major issues
-3 = Partially correct
-4 = Correct
-5 = Excellent
+func cheatsheetUser(deckName, deckDescription string, cards []CheatsheetCard) string {
+	tiers := groupCardsByTier(cards)
+	for i := range tiers {
+		tiers[i].Tier.Label = localizedTierLabel(tiers[i].Tier.Key)
+	}
+	return renderTemplate("cheatsheet_user.tmpl", struct {
+		DeckName        string
+		DeckDescription string
+		Tiers           []cheatsheetTierBlock
+	}{
+		DeckName:        deckName,
+		DeckDescription: strings.TrimSpace(deckDescription),
+		Tiers:           tiers,
+	})
+}
 
-Be brief. You may ask one follow-up question if needed. When confident, end your response with exactly:
-FINAL_GRADE: [1-5]
-VERDICT: [Wrong|Partially correct|Correct|Excellent]`, in.Prompt, in.ExpectedAnswer)
+// localizedTierLabel resolves the struggle-tier label from i18n so pt-BR
+// cheatsheet prompts receive "Difíceis" instead of "Struggling". Keys map
+// 1:1 to StruggleTier.Key values.
+func localizedTierLabel(key string) string {
+	switch key {
+	case TierStruggling.Key:
+		return i18n.T(i18n.KeyTierStruggling)
+	case TierShaky.Key:
+		return i18n.T(i18n.KeyTierShaky)
+	case TierSolid.Key:
+		return i18n.T(i18n.KeyTierSolid)
+	case TierNew.Key:
+		return i18n.T(i18n.KeyTierNew)
+	}
+	return key
+}
+
+type cheatsheetTierBlock struct {
+	Tier  StruggleTier
+	Cards []CheatsheetCard
+}
+
+// groupCardsByTier preserves the input order (which OrderByStruggle already
+// sorted hardest-first) but clusters consecutive cards of the same tier so
+// the template can render one heading per tier instead of per card.
+func groupCardsByTier(cards []CheatsheetCard) []cheatsheetTierBlock {
+	var out []cheatsheetTierBlock
+	for _, c := range cards {
+		if len(out) == 0 || out[len(out)-1].Tier.Key != c.Tier.Key {
+			out = append(out, cheatsheetTierBlock{Tier: c.Tier})
+		}
+		idx := len(out) - 1
+		out[idx].Cards = append(out[idx].Cards, c)
+	}
+	return out
 }

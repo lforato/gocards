@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lforato/gocards/internal/i18n"
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
 	"github.com/lforato/gocards/internal/tui"
@@ -66,12 +67,12 @@ func NewCreate(s *store.Store, preselectedDeckID int64) *Create {
 
 func newDeckFormInputs() []textinput.Model {
 	name := textinput.New()
-	name.Placeholder = "deck name"
+	name.Placeholder = i18n.T(i18n.KeyCreateDeckNamePlaceholder)
 	name.CharLimit = 80
 	name.Width = 50
 
 	desc := textinput.New()
-	desc.Placeholder = "short description (optional)"
+	desc.Placeholder = i18n.T(i18n.KeyCreateDeckDescPlaceholder)
 	desc.CharLimit = 200
 	desc.Width = 50
 
@@ -95,7 +96,7 @@ type createDecksLoadedMsg struct {
 
 func (c *Create) loadDecks() tea.Cmd {
 	return func() tea.Msg {
-		ds, err := c.store.ListDecks()
+		ds, err := c.store.ListDecksByLanguage(string(i18n.CurrentLang()))
 		return createDecksLoadedMsg{decks: ds, err: err}
 	}
 }
@@ -105,6 +106,8 @@ func (c *Create) Update(msg tea.Msg) (tui.Screen, tea.Cmd) {
 	case createDecksLoadedMsg:
 		c.applyLoadedDecks(m)
 		return c, nil
+	case tui.LangChangedMsg:
+		return c, c.loadDecks()
 	case tea.KeyMsg:
 		return c.handleKey(m)
 	}
@@ -175,15 +178,15 @@ func (c *Create) handleNewDeckKey(m tea.KeyMsg) (tui.Screen, tea.Cmd) {
 func (c *Create) submitNewDeck() (tui.Screen, tea.Cmd) {
 	name := c.deckForm.Value(deckFormName)
 	if name == "" {
-		return c, tui.ToastErr("deck name required")
+		return c, tui.ToastErr(i18n.T(i18n.KeyCreateValidationName))
 	}
 	color := strings.TrimSpace(c.deckForm.Value(deckFormColor))
 	if color == "" {
 		color = defaultDeckColor
 	}
-	deck, err := c.store.CreateDeck(name, c.deckForm.Value(deckFormDesc), color)
+	deck, err := c.store.CreateDeck(name, c.deckForm.Value(deckFormDesc), color, string(i18n.CurrentLang()))
 	if err != nil {
-		return c, tui.ToastErr("create failed: " + err.Error())
+		return c, tui.ToastErr(i18n.T(i18n.KeyCreateFailedPrefix) + err.Error())
 	}
 	c.targetDeck = deck
 	c.step = stepPickType
@@ -223,9 +226,9 @@ func (c *Create) View() string {
 }
 
 func (c *Create) viewPickDeck() string {
-	rows := []string{tui.StyleTitle.Render("New card — pick a deck"), ""}
+	rows := []string{tui.StyleTitle.Render(i18n.T(i18n.KeyCreatePickDeckTitle)), ""}
 	if len(c.decks) == 0 {
-		rows = append(rows, tui.StyleMuted.Render("no decks yet"))
+		rows = append(rows, tui.StyleMuted.Render(i18n.T(i18n.KeyCreateNoDecks)))
 	}
 	for i, d := range c.decks {
 		sel := i == c.deckCursor
@@ -236,7 +239,7 @@ func (c *Create) viewPickDeck() string {
 		rows = append(rows, fmt.Sprintf("%s%s  %s", selectionPrefix(sel), colorBullet(d.Color), name))
 	}
 	sel := c.deckCursor == len(c.decks)
-	label := "+ new deck"
+	label := i18n.T(i18n.KeyCreateNewDeckAction)
 	if sel {
 		label = tui.StyleSelected.Render(label)
 	}
@@ -245,8 +248,12 @@ func (c *Create) viewPickDeck() string {
 }
 
 func (c *Create) viewNewDeck() string {
-	rows := []string{tui.StyleTitle.Render("Create deck"), ""}
-	labels := []string{"Name", "Description", "Color (#hex)"}
+	rows := []string{tui.StyleTitle.Render(i18n.T(i18n.KeyCreateDeckTitle)), ""}
+	labels := []string{
+		i18n.T(i18n.KeyCreateFormName),
+		i18n.T(i18n.KeyCreateFormDesc),
+		i18n.T(i18n.KeyCreateFormColor),
+	}
 	for i, label := range labels {
 		rows = append(rows, tui.StyleMuted.Render(label), c.deckForm.Input(i).View(), "")
 	}
@@ -254,7 +261,7 @@ func (c *Create) viewNewDeck() string {
 }
 
 func (c *Create) viewPickType() string {
-	title := tui.StyleTitle.Render("New card — pick type")
+	title := tui.StyleTitle.Render(i18n.T(i18n.KeyCreatePickTypeTitle))
 	if c.targetDeck != nil {
 		title += "  " + tui.StyleMuted.Render("→ "+c.targetDeck.Name)
 	}
@@ -269,9 +276,17 @@ func (c *Create) viewPickType() string {
 func (c *Create) HelpKeys() []string {
 	switch c.step {
 	case stepNewDeck:
-		return []string{"tab cycle", "enter create", "esc back"}
+		return []string{
+			i18n.Help("tab", i18n.KeyHelpCycle),
+			i18n.Help("enter", i18n.KeyHelpNew),
+			i18n.Help("esc", i18n.KeyHelpBack),
+		}
 	default:
-		return []string{"↑/↓ move", "enter select", "esc back"}
+		return []string{
+			i18n.Help("↑/↓", i18n.KeyHelpMove),
+			i18n.Help("enter", i18n.KeyHelpSelect),
+			i18n.Help("esc", i18n.KeyHelpBack),
+		}
 	}
 }
 

@@ -27,6 +27,16 @@ func migrate(conn *sql.DB) error {
 			return fmt.Errorf("add cards.initial_code: %w", err)
 		}
 	}
+
+	has, err = hasColumn(conn, "decks", "language")
+	if err != nil {
+		return err
+	}
+	if !has {
+		if _, err := conn.Exec(`ALTER TABLE decks ADD COLUMN language TEXT NOT NULL DEFAULT 'en'`); err != nil {
+			return fmt.Errorf("add decks.language: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -36,6 +46,7 @@ var knownTables = map[string]struct{}{
 	"reviews":        {},
 	"study_sessions": {},
 	"settings":       {},
+	"cheatsheets":    {},
 }
 
 func hasColumn(conn *sql.DB, table, col string) (bool, error) {

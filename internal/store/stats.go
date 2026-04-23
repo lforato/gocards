@@ -66,7 +66,17 @@ func (s *Store) Retention() (int, error) {
 }
 
 func (s *Store) DueToday() (int, error) {
-	decks, err := s.ListDecks()
+	return s.dueTodayFromDecks(func() ([]models.Deck, error) { return s.ListDecks() })
+}
+
+// DueTodayByLanguage counts due cards only across decks matching the
+// given language — feeds the dashboard's "due today" stat after i18n.
+func (s *Store) DueTodayByLanguage(lang string) (int, error) {
+	return s.dueTodayFromDecks(func() ([]models.Deck, error) { return s.ListDecksByLanguage(lang) })
+}
+
+func (s *Store) dueTodayFromDecks(fetch func() ([]models.Deck, error)) (int, error) {
+	decks, err := fetch()
 	if err != nil {
 		return 0, err
 	}
@@ -107,7 +117,17 @@ func (s *Store) Activity() (map[string]int, error) {
 }
 
 func (s *Store) DeckSummaries() ([]models.DeckWithCounts, error) {
-	decks, err := s.ListDecks()
+	return s.deckSummariesFrom(func() ([]models.Deck, error) { return s.ListDecks() })
+}
+
+// DeckSummariesByLanguage is the i18n-aware variant used by every UI
+// entry point that lists decks (dashboard, create, generate).
+func (s *Store) DeckSummariesByLanguage(lang string) ([]models.DeckWithCounts, error) {
+	return s.deckSummariesFrom(func() ([]models.Deck, error) { return s.ListDecksByLanguage(lang) })
+}
+
+func (s *Store) deckSummariesFrom(fetch func() ([]models.Deck, error)) ([]models.DeckWithCounts, error) {
+	decks, err := fetch()
 	if err != nil {
 		return nil, err
 	}

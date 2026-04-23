@@ -27,7 +27,21 @@ func validateDeckFields(name, color string) error {
 }
 
 func (s *Store) ListDecks() ([]models.Deck, error) {
-	rows, err := s.db.Query(`SELECT id,name,description,color,created_at FROM decks ORDER BY created_at ASC`)
+	return s.queryDecks(`SELECT id,name,description,color,language,created_at FROM decks ORDER BY created_at ASC`)
+}
+
+// ListDecksByLanguage returns decks whose language column matches lang.
+// Use this in any UI entry point — the unfiltered ListDecks is kept for
+// seed/tests/migrations that need to see every row.
+func (s *Store) ListDecksByLanguage(lang string) ([]models.Deck, error) {
+	return s.queryDecks(
+		`SELECT id,name,description,color,language,created_at FROM decks WHERE language = ? ORDER BY created_at ASC`,
+		lang,
+	)
+}
+
+func (s *Store) queryDecks(query string, args ...any) ([]models.Deck, error) {
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +51,7 @@ func (s *Store) ListDecks() ([]models.Deck, error) {
 	for rows.Next() {
 		var d models.Deck
 		var ts string
-		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.Color, &ts); err != nil {
+		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.Color, &d.Language, &ts); err != nil {
 			return nil, err
 		}
 		d.CreatedAt = parseTime(ts)
@@ -50,8 +64,8 @@ func (s *Store) GetDeck(id int64) (*models.Deck, error) {
 	var d models.Deck
 	var ts string
 	err := s.db.QueryRow(
-		`SELECT id,name,description,color,created_at FROM decks WHERE id = ?`, id,
-	).Scan(&d.ID, &d.Name, &d.Description, &d.Color, &ts)
+		`SELECT id,name,description,color,language,created_at FROM decks WHERE id = ?`, id,
+	).Scan(&d.ID, &d.Name, &d.Description, &d.Color, &d.Language, &ts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -62,13 +76,19 @@ func (s *Store) GetDeck(id int64) (*models.Deck, error) {
 	return &d, nil
 }
 
-func (s *Store) CreateDeck(name, description, color string) (*models.Deck, error) {
+// CreateDeck persists a new deck tagged with the given language (the
+// caller passes the current i18n.CurrentLang() so the deck sticks to
+// that locale on subsequent dashboard views).
+func (s *Store) CreateDeck(name, description, color, language string) (*models.Deck, error) {
 	if err := validateDeckFields(name, color); err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(language) == "" {
+		language = "en"
+	}
 	res, err := s.db.Exec(
-		`INSERT INTO decks(name,description,color) VALUES(?,?,?)`,
-		strings.TrimSpace(name), description, color,
+		`INSERT INTO decks(name,description,color,language) VALUES(?,?,?,?)`,
+		strings.TrimSpace(name), description, color, language,
 	)
 	if err != nil {
 		return nil, err

@@ -23,7 +23,7 @@ func openTestStore(t *testing.T) *Store {
 
 func TestDeckCRUD(t *testing.T) {
 	s := openTestStore(t)
-	d, err := s.CreateDeck("Algo", "algorithms", "#10b981")
+	d, err := s.CreateDeck("Algo", "algorithms", "#10b981", "en")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestDeckCRUD(t *testing.T) {
 
 func TestCardsAndDue(t *testing.T) {
 	s := openTestStore(t)
-	d, _ := s.CreateDeck("JS", "", "#f59e0b")
+	d, _ := s.CreateDeck("JS", "", "#f59e0b", "en")
 	ins, err := s.BulkCreateCards(d.ID, []CardInput{
 		{Type: models.CardCode, Language: "js", Prompt: "p1", ExpectedAnswer: "a"},
 		{Type: models.CardMCQ, Language: "js", Prompt: "p2", Choices: []models.Choice{{ID: "a", Text: "A", IsCorrect: true}}},
@@ -89,7 +89,7 @@ func TestSettings(t *testing.T) {
 
 func TestStreakAndActivity(t *testing.T) {
 	s := openTestStore(t)
-	d, _ := s.CreateDeck("x", "", "#f59e0b")
+	d, _ := s.CreateDeck("x", "", "#f59e0b", "en")
 	cs, _ := s.BulkCreateCards(d.ID, []CardInput{
 		{Type: models.CardCode, Language: "js", Prompt: "p"},
 	})

@@ -1,0 +1,20 @@
+Baralho: {{.DeckName}}
+{{if .DeckDescription}}Descrição: {{.DeckDescription}}
+{{end}}
+As cartas abaixo estão agrupadas pelo tier de dificuldade atual do leitor, mais difícil primeiro. Preserve este agrupamento e ordem ao escrever o cheatsheet.
+
+{{range $tIdx, $tier := .Tiers}}=== Tier {{add $tIdx 1}}: {{$tier.Tier.Emoji}} {{$tier.Tier.Label}} ({{len $tier.Cards}} carta{{if ne (len $tier.Cards) 1}}s{{end}}) ===
+
+{{range $i, $cc := $tier.Cards}}--- Carta [{{$cc.Card.Type}}{{if $cc.Card.Language}} · {{$cc.Card.Language}}{{end}}] | revisões: {{$cc.Stats.ReviewCount}}, nota média: {{printf "%.1f" $cc.Stats.AvgGrade}}, erros: {{$cc.Stats.FailCount}} ---
+Prompt:
+{{$cc.Card.Prompt}}
+{{if $cc.Card.ExpectedAnswer}}Resposta de referência:
+{{$cc.Card.ExpectedAnswer}}
+{{end}}{{if $cc.Card.Choices}}Alternativas:
+{{range $cc.Card.Choices}}- {{if .IsCorrect}}(correta) {{end}}{{.Text}}
+{{end}}{{end}}{{if $cc.Card.BlanksData}}Template:
+{{$cc.Card.BlanksData.Template}}
+Lacunas: {{join $cc.Card.BlanksData.Blanks ", "}}
+{{end}}
+{{end}}
+{{end}}

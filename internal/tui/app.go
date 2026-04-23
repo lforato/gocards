@@ -6,12 +6,12 @@
 package tui
 
 import (
-	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lforato/gocards/internal/i18n"
 	"github.com/lforato/gocards/internal/store"
 )
 
@@ -36,6 +36,11 @@ type ToastMsg struct {
 	Text    string
 	IsError bool
 }
+
+// LangChangedMsg fires after the user saves a new language in Settings.
+// App broadcasts it to every screen in the stack so data-loading screens
+// (dashboard, create, generate) can refetch under the new language filter.
+type LangChangedMsg struct{}
 
 func Toast(s string) tea.Cmd    { return func() tea.Msg { return ToastMsg{Text: s} } }
 func ToastErr(s string) tea.Cmd { return func() tea.Msg { return ToastMsg{Text: s, IsError: true} } }
@@ -88,6 +93,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case NavMsg:
 		return a, a.handleNav(m)
+	case LangChangedMsg:
+		return a, a.broadcast(m)
 	case ToastMsg:
 		a.toast = m.Text
 		a.toastIsErr = m.IsError
@@ -110,6 +117,21 @@ func (a *App) forwardToTop(msg tea.Msg) tea.Cmd {
 	next, cmd := a.top().Update(msg)
 	a.stack[len(a.stack)-1] = next
 	return cmd
+}
+
+// broadcast forwards msg to every screen in the stack (not just the top)
+// so stacked screens can invalidate language-sensitive caches when the
+// user switches locales without restarting.
+func (a *App) broadcast(msg tea.Msg) tea.Cmd {
+	var cmds []tea.Cmd
+	for i, scr := range a.stack {
+		next, cmd := scr.Update(msg)
+		a.stack[i] = next
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	return tea.Batch(cmds...)
 }
 
 func (a *App) handleNav(m NavMsg) tea.Cmd {
@@ -175,13 +197,12 @@ func (a *App) tooSmall() bool {
 }
 
 func (a *App) tooSmallNotice() string {
-	return StyleDanger.Render("terminal too small ") +
-		StyleMuted.Render(fmt.Sprintf("(need at least %d×%d, got %d×%d)",
-			minTerminalW, minTerminalH, a.w, a.h))
+	return StyleDanger.Render(i18n.T(i18n.KeyTerminalTooSmall)+" ") +
+		StyleMuted.Render(i18n.Tf(i18n.KeyTerminalSizeHint, minTerminalW, minTerminalH, a.w, a.h))
 }
 
 func (a *App) renderBody() string {
-	header := StylePrimary.Render("gocards") + StyleMuted.Render("  terminal flashcards")
+	header := StylePrimary.Render("gocards") + StyleMuted.Render("  "+i18n.T(i18n.KeyAppSubtitle))
 	body := lipgloss.NewStyle().Height(max(1, a.contentH-frameVertical)).Render(a.top().View())
 	help := HelpLine(a.top().HelpKeys()...)
 	return lipgloss.JoinVertical(lipgloss.Left, header, "", body, help)

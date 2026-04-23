@@ -22,12 +22,15 @@ type GradeInput struct {
 func (c *Client) Grade(ctx context.Context, in GradeInput) <-chan Event {
 	messages := toAnthropic(in.History)
 	if len(in.History) == 0 {
-		messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(firstGraderTurn(in))))
+		messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(FirstGraderTurn(in))))
 	}
 	return c.stream(ctx, gradeSystem(in), messages, maxTokensGrade)
 }
 
-func firstGraderTurn(in GradeInput) string {
+// FirstGraderTurn renders the initial user turn the grader sees. Exported so
+// the study screen can seed its in-memory conversation history with the same
+// wording after the first streaming call.
+func FirstGraderTurn(in GradeInput) string {
 	if in.Mode == "explanation" {
 		return fmt.Sprintf("Student's annotated code (the block above with their comments added):\n\n```\n%s\n```", in.UserAnswer)
 	}

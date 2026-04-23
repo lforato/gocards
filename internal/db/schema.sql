@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS decks (
     name        TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     color       TEXT NOT NULL,
+    language    TEXT NOT NULL DEFAULT 'en',
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
@@ -45,4 +46,10 @@ CREATE INDEX IF NOT EXISTS study_sessions_deck_id_idx ON study_sessions(deck_id)
 CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cheatsheets (
+    deck_id      INTEGER PRIMARY KEY REFERENCES decks(id) ON DELETE CASCADE,
+    content      TEXT NOT NULL,
+    generated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );

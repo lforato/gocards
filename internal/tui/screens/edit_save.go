@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lforato/gocards/internal/i18n"
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
 	"github.com/lforato/gocards/internal/tui"
@@ -118,17 +119,17 @@ func (e *Edit) persist(in store.CardInput) tea.Cmd {
 func (e *Edit) create(in store.CardInput) tea.Cmd {
 	cs, err := e.store.BulkCreateCards(e.card.DeckID, []store.CardInput{in})
 	if err != nil {
-		return tui.ToastErr("save failed: " + err.Error())
+		return tui.ToastErr(i18n.T(i18n.KeyEditSaveFailedPfx) + err.Error())
 	}
 	if len(cs) > 0 {
 		e.card = cs[0]
 	}
-	return tea.Batch(tui.Toast("card created"), navBack)
+	return tea.Batch(tui.Toast(i18n.T(i18n.KeyEditCardCreated)), navBack)
 }
 
 func (e *Edit) update(in store.CardInput) tea.Cmd {
 	if _, err := e.store.UpdateCard(e.card.ID, in); err != nil {
-		return tui.ToastErr("update failed: " + err.Error())
+		return tui.ToastErr(i18n.T(i18n.KeyEditSaveFailedPfx) + err.Error())
 	}
-	return tea.Batch(tui.Toast("card saved"), navBack)
+	return tea.Batch(tui.Toast(i18n.T(i18n.KeyEditCardSaved)), navBack)
 }

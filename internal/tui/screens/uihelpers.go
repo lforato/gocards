@@ -51,17 +51,6 @@ func colorBullet(hex string) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(hex)).Render("●")
 }
 
-func truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	if n <= 1 {
-		return string(r[:n])
-	}
-	return string(r[:n-1]) + "…"
-}
-
 func pluralize(n int, singular, plural string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, singular)

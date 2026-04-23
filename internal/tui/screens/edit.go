@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lforato/gocards/internal/i18n"
 	"github.com/lforato/gocards/internal/models"
 	"github.com/lforato/gocards/internal/store"
 	"github.com/lforato/gocards/internal/tui"
@@ -330,9 +331,9 @@ func (e *Edit) buildView(v *editView) {
 
 func (e *Edit) title() string {
 	if e.card.ID > 0 {
-		return fmt.Sprintf("Edit card #%d", e.card.ID)
+		return i18n.Tf(i18n.KeyEditCardTitle, e.card.ID)
 	}
-	return "New card"
+	return i18n.T(i18n.KeyEditNewCard)
 }
 
 func (e *Edit) fieldLabel(text string, field editField) string {
@@ -345,7 +346,7 @@ func (e *Edit) fieldLabel(text string, field editField) string {
 func (e *Edit) typeLine() string {
 	return fmt.Sprintf("%s  %s",
 		typeBadge(e.card.Type, true),
-		tui.StyleMuted.Render("(1 code · 2 mcq · 3 fill · 4 exp)"),
+		tui.StyleMuted.Render(i18n.T(i18n.KeyEditTypeLegend)),
 	)
 }
 
@@ -354,45 +355,45 @@ func (e *Edit) typeLine() string {
 // accepts 1-4 to switch types.
 func (e *Edit) addTypeSection(v *editView) {
 	if e.card.Type == models.CardCode {
-		v.add(tui.StyleMuted.Render("Type"), "  "+e.typeLine())
+		v.add(tui.StyleMuted.Render(i18n.T(i18n.KeyEditFieldType)), "  "+e.typeLine())
 		return
 	}
-	v.field(fType, e.fieldLabel("Type", fType), "  "+e.typeLine())
+	v.field(fType, e.fieldLabel(i18n.T(i18n.KeyEditFieldType), fType), "  "+e.typeLine())
 }
 
 func (e *Edit) addLanguageSection(v *editView) {
-	v.field(fLanguage, e.fieldLabel("Language", fLanguage), "  "+e.language.View())
+	v.field(fLanguage, e.fieldLabel(i18n.T(i18n.KeyEditFieldLanguage), fLanguage), "  "+e.language.View())
 }
 
 func (e *Edit) addPromptSection(v *editView) {
-	v.field(fPrompt, e.fieldLabel("Question", fPrompt),
+	v.field(fPrompt, e.fieldLabel(i18n.T(i18n.KeyEditFieldQuestion), fPrompt),
 		e.previewBox(e.card.Prompt, placeholderFor(e.card.Type)))
 }
 
 func (e *Edit) addTypeSpecificSections(v *editView) {
 	switch e.card.Type {
 	case models.CardCode:
-		v.field(fInitialCode, e.fieldLabel("Initial code", fInitialCode),
+		v.field(fInitialCode, e.fieldLabel(i18n.T(i18n.KeyEditFieldInitCode), fInitialCode),
 			e.previewBox(e.card.InitialCode, "(empty — press enter to edit)"))
 		v.blank()
-		v.field(fExpected, e.fieldLabel("Expected answer", fExpected),
+		v.field(fExpected, e.fieldLabel(i18n.T(i18n.KeyEditFieldExpected), fExpected),
 			e.previewBox(e.card.ExpectedAnswer, "(empty — press enter to edit)"))
 		v.blank()
 	case models.CardExp:
-		v.field(fExpected, e.fieldLabel("Expected answer", fExpected),
+		v.field(fExpected, e.fieldLabel(i18n.T(i18n.KeyEditFieldExpected), fExpected),
 			e.previewBox(e.card.ExpectedAnswer, "(empty — press enter to open vim)"))
 		v.blank()
 	case models.CardMCQ:
-		v.field(fChoices, e.fieldLabel("Choices", fChoices), e.viewChoices())
+		v.field(fChoices, e.fieldLabel(i18n.T(i18n.KeyEditFieldChoices), fChoices), e.viewChoices())
 		v.blank()
 	case models.CardFill:
 		tmpl := ""
 		if e.card.BlanksData != nil {
 			tmpl = e.card.BlanksData.Template
 		}
-		v.field(fTemplate, e.fieldLabel("Template", fTemplate),
+		v.field(fTemplate, e.fieldLabel(i18n.T(i18n.KeyEditFieldTemplate), fTemplate),
 			e.previewBox(tmpl, "(empty — press enter to open vim)"),
-			tui.StyleMuted.Render("  {{answer}} marks a blank"))
+			tui.StyleMuted.Render("  "+i18n.T(i18n.KeyEditTemplateHint)))
 		v.blank()
 	}
 }

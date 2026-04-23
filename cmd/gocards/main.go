@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lforato/gocards/internal/db"
+	"github.com/lforato/gocards/internal/i18n"
 	"github.com/lforato/gocards/internal/store"
 	"github.com/lforato/gocards/internal/tui"
 	"github.com/lforato/gocards/internal/tui/screens"
@@ -24,6 +25,9 @@ func main() {
 	defer conn.Close()
 
 	s := store.New(conn)
+	if err := i18n.LoadFromStore(s); err != nil {
+		fmt.Fprintln(os.Stderr, "i18n:", err)
+	}
 	app := tui.NewApp(s, screens.NewDashboard(s))
 
 	prog := tea.NewProgram(app, tea.WithAltScreen())
