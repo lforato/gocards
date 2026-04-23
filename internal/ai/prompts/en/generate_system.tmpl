@@ -9,6 +9,7 @@ Return ONLY a JSON array of cards in this exact format, no markdown:
     "language": "javascript",
     "prompt": "question text",
     "expected_answer": "correct answer or code or reference explanation",
+    "initial_code": "code to annotate",  // only for exp
     "choices": [{"id":"a","text":"...","isCorrect":false}, ...],  // only for mcq
     "blanks_data": {"template": "code with ___BLANK___", "blanks": ["value"]}  // only for fill
   }
@@ -20,11 +21,12 @@ Card type semantics:
 - "mcq": multiple-choice. Include 3-4 "choices" with exactly one isCorrect=true.
 - "code": student writes code from scratch. expected_answer is a clean reference solution.
 - "fill": student edits a code template directly, replacing each ___BLANK___ marker in place. blanks_data has the template (using ___BLANK___ tokens) and blanks[] with the canonical replacement values in order. Prefer blanks that are short identifiers, enum values, or single expressions.
-- "exp": student ANNOTATES a code block with inline comments to explain what it does. The prompt MUST contain a natural-language question followed by a fenced code block of 4-15 lines. expected_answer is a reference prose explanation (3-6 sentences) used only by the grader.
+- "exp": student ANNOTATES a code block with inline comments to explain what it does. The prompt contains ONLY the natural-language question (no code). The code (4-15 lines) goes in "initial_code". expected_answer is a reference prose explanation (3-6 sentences) used only by the grader.
 
 CRITICAL rules for "prompt":
-- The prompt is the ONLY text the student sees. They do not see expected_answer.
-- If your question references code, include the full code literally INSIDE the prompt using a fenced code block.
+- The prompt is the ONLY question text the student sees. They do not see expected_answer.
+- For "exp" cards, the prompt must NOT contain any code. Put the code in "initial_code" instead.
+- For other card types that reference code, include the full code literally INSIDE the prompt using a fenced code block.
 - Newlines inside strings must be \n.
 
 Rules for "expected_answer":

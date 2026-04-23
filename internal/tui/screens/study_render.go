@@ -4,10 +4,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
-
-	"github.com/lforato/gocards/internal/tui"
 )
 
 // renderPrompt formats a card prompt through glamour for terminal markdown
@@ -15,15 +11,6 @@ import (
 // wrap so long lines don't overflow the frame.
 func renderPrompt(p string, width int) string {
 	return renderMarkdown(p, width)
-}
-
-func codeBox(s string) string {
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBorder).
-		Foreground(lipgloss.Color("#d1d5db")).
-		Padding(0, 1).
-		Render(s)
 }
 
 // extractCodeBlock returns the body of the first fenced block in prompt,

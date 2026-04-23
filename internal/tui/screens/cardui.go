@@ -82,7 +82,7 @@ var cardUIs = map[models.CardType]cardUI{
 		Color:       tui.ColorPrimary,
 		QuestionFn:  questionHelpCode,
 		AnsweredFn:  answeredHelpCode,
-		EditFields:  []editField{fType, fLanguage, fPrompt, fExpected},
+		EditFields:  []editField{fType, fLanguage, fPrompt, fInitialCode, fExpected},
 	},
 }
 

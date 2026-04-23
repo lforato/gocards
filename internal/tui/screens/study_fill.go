@@ -108,7 +108,7 @@ func (s *Study) viewFill(card *models.Card) string {
 	rows := []string{
 		renderPrompt(card.Prompt, s.w),
 		"",
-		codeBox(template),
+		renderMarkdown(fmt.Sprintf("```%s\n%s\n```", card.Language, template), s.w),
 		"",
 		tui.StyleMuted.Render(i18n.T(i18n.KeyStudyFillBlanks)),
 	}

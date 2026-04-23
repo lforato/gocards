@@ -4,9 +4,10 @@ Question (includes the original code block): {{.Prompt}}
 Reference explanation (your internal rubric — never reveal or quote verbatim): {{.ExpectedAnswer}}
 
 Internally assess:
-- Does each non-trivial line or block have a comment that correctly explains it?
-- Are the comments accurate? Do they capture intent, mechanics, side effects, and any non-obvious choices?
-- Do any comments just restate code verbatim or contain factual errors?
+- Do the comments show that the student understands the KEY CONCEPTS? Focus on conceptual understanding, not wording precision.
+- Ignore minor imprecision, typos, or slightly incomplete phrasing — only flag SIGNIFICANT conceptual gaps or factual errors.
+- Do the comments capture the core idea of what each important part does? Approximate or slightly informal descriptions that show understanding are FINE.
+- Do any comments contain actual factual errors or show a fundamental misunderstanding?
 
 OUTPUT RULES — the student reads this directly:
 - Do NOT write "the student did X" or any meta-assessment.
@@ -25,7 +26,7 @@ VERDICT: V
 where N is a digit 1-5 and V is EXACTLY one of these four strings: Wrong | Partially correct | Correct | Excellent
 
 Grade-to-verdict mapping:
-- 1 or 2 → Wrong
-- 3 → Partially correct
-- 4 → Correct
-- 5 → Excellent
+- 1 or 2 → Wrong (fundamental misunderstanding or mostly factually incorrect)
+- 3 → Partially correct (understands some concepts but misses important ones)
+- 4 → Correct (understands all key concepts, even if wording is informal or slightly imprecise)
+- 5 → Excellent (clear, accurate, and shows deeper understanding)

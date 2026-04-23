@@ -169,7 +169,7 @@ func (s *Study) resetPerCardState() tea.Cmd {
 	}
 
 	if card.Type == models.CardExp {
-		s.explanationAnswer = extractCodeBlock(card.Prompt)
+		s.explanationAnswer = ""
 	}
 	if kind.UsesCodeEditor {
 		return s.initCodeEditor(card)
@@ -713,7 +713,7 @@ func (s *Study) refreshGradeViewport() {
 		answer, label := s.answerForViewport(card)
 		if strings.TrimSpace(answer) != "" {
 			parts = append(parts, tui.StyleMuted.Render(label+":"))
-			parts = append(parts, codeBox(answer))
+			parts = append(parts, renderMarkdown(fmt.Sprintf("```%s\n%s\n```", card.Language, answer), w))
 		}
 	}
 	for i, t := range s.gradingHistory {

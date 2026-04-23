@@ -4,9 +4,10 @@ Pergunta (inclui o bloco de código original): {{.Prompt}}
 Explicação de referência (sua rubrica interna — nunca revele nem cite literalmente): {{.ExpectedAnswer}}
 
 Avalie internamente:
-- Cada linha ou bloco não trivial tem um comentário que explica corretamente o que ele faz?
-- Os comentários são precisos? Eles capturam intenção, mecânica, efeitos colaterais e escolhas não óbvias?
-- Algum comentário apenas repete o código literalmente ou contém erros factuais?
+- Os comentários mostram que o estudante entende os CONCEITOS-CHAVE? Foque no entendimento conceitual, não na precisão do vocabulário.
+- Ignore imprecisões menores, erros de digitação ou fraseamento ligeiramente incompleto — sinalize apenas LACUNAS CONCEITUAIS SIGNIFICATIVAS ou erros factuais reais.
+- Os comentários capturam a ideia central do que cada parte importante faz? Descrições aproximadas ou um pouco informais que demonstram entendimento são ACEITÁVEIS.
+- Algum comentário contém erros factuais reais ou revela um desentendimento fundamental?
 
 REGRAS DE SAÍDA — o estudante lê isso diretamente:
 - NÃO escreva "o estudante fez X" ou qualquer meta-avaliação.
@@ -25,7 +26,7 @@ VERDICT: V
 onde N é um dígito 1-5 e V é EXATAMENTE uma destas quatro strings: Wrong | Partially correct | Correct | Excellent
 
 Mapeamento nota → veredito:
-- 1 ou 2 → Wrong
-- 3 → Partially correct
-- 4 → Correct
-- 5 → Excellent
+- 1 ou 2 → Wrong (desentendimento fundamental ou majoritariamente incorreto)
+- 3 → Partially correct (entende alguns conceitos mas perde conceitos importantes)
+- 4 → Correct (entende todos os conceitos-chave, mesmo que o vocabulário seja informal ou ligeiramente impreciso)
+- 5 → Excellent (claro, preciso e demonstra entendimento mais profundo)

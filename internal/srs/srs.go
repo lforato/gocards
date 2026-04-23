@@ -16,47 +16,55 @@ type Result struct {
 	NextDue  time.Time
 }
 
-// CalculateNext mirrors the JS SRS in server/src/lib/srs.ts.
+// CalculateNext implements Anki's SM-2 scheduling algorithm.
+//
+// Grade mapping (mirrors Anki's four buttons):
+//   1-2 → Again : reset to 1 day, ease −0.20
+//   3   → Hard  : interval × 1.2 (min current+1), ease −0.15
+//   4   → Good  : interval × ease (min current+1), ease unchanged
+//   5   → Easy  : interval × ease × 1.3 (min current+1), ease +0.15
+//
+// New cards (interval == 0) skip the multiplier and get fixed seed intervals:
+// Again/Hard → 1 day, Good → 1 day, Easy → 4 days.
 func CalculateNext(grade int, ease float64, interval int) Result {
+	const (
+		minEase   = 1.3
+		easyBonus = 1.3
+	)
 	if ease == 0 {
 		ease = 2.5
 	}
 
 	newEase := ease
-	newInterval := interval
+	var newInterval int
 
 	switch {
-	case grade <= 2:
+	case grade <= 2: // Again
 		newInterval = 1
-		newEase = math.Max(1.3, ease-0.2)
-	case grade == 3:
-		v := int(math.Round(float64(interval) * 1.2))
-		if v < 1 {
-			v = 1
-		}
-		newInterval = v
-	case grade == 4:
+		newEase = math.Max(minEase, ease-0.2)
+
+	case grade == 3: // Hard
+		newEase = math.Max(minEase, ease-0.15)
 		if interval == 0 {
 			newInterval = 1
 		} else {
-			v := int(math.Round(float64(interval) * ease))
-			if v < 2 {
-				v = 2
-			}
-			newInterval = v
+			newInterval = max(interval+1, int(math.Round(float64(interval)*1.2)))
 		}
-		newEase = ease + 0.05
-	default:
+
+	case grade == 4: // Good
 		if interval == 0 {
-			newInterval = 2
+			newInterval = 1
 		} else {
-			v := int(math.Round(float64(interval) * ease * 1.3))
-			if v < 2 {
-				v = 2
-			}
-			newInterval = v
+			newInterval = max(interval+1, int(math.Round(float64(interval)*ease)))
 		}
+
+	default: // Easy (grade 5)
 		newEase = ease + 0.15
+		if interval == 0 {
+			newInterval = 4
+		} else {
+			newInterval = max(interval+1, int(math.Round(float64(interval)*ease*easyBonus)))
+		}
 	}
 
 	if newInterval > 365 {

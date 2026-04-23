@@ -9,6 +9,7 @@ Retorne APENAS um array JSON de cartas neste formato exato, sem markdown:
     "language": "javascript",
     "prompt": "texto da pergunta",
     "expected_answer": "resposta correta, código, ou explicação de referência",
+    "initial_code": "código a ser anotado",  // apenas para exp
     "choices": [{"id":"a","text":"...","isCorrect":false}, ...],  // apenas para mcq
     "blanks_data": {"template": "code with ___BLANK___", "blanks": ["value"]}  // apenas para fill
   }
@@ -20,11 +21,12 @@ Semântica por tipo de carta:
 - "mcq": múltipla escolha. Inclua 3-4 "choices" com exatamente uma isCorrect=true.
 - "code": o estudante escreve código do zero. expected_answer é uma solução de referência limpa.
 - "fill": o estudante edita um template de código diretamente, substituindo cada marcador ___BLANK___ no lugar. blanks_data tem o template (usando tokens ___BLANK___) e blanks[] com os valores canônicos em ordem. Prefira lacunas que sejam identificadores curtos, valores de enum, ou expressões únicas.
-- "exp": o estudante ANOTA um bloco de código com comentários inline para explicar o que ele faz. O prompt DEVE conter uma pergunta em linguagem natural seguida por um bloco de código com cercas de 4-15 linhas. expected_answer é uma explicação textual de referência (3-6 frases) usada apenas pelo avaliador.
+- "exp": o estudante ANOTA um bloco de código com comentários inline para explicar o que ele faz. O prompt contém APENAS a pergunta em linguagem natural (sem código). O código (4-15 linhas) vai em "initial_code". expected_answer é uma explicação textual de referência (3-6 frases) usada apenas pelo avaliador.
 
 Regras CRÍTICAS para "prompt":
-- O prompt é o ÚNICO texto que o estudante vê. Eles não veem expected_answer.
-- Se a sua pergunta referencia código, inclua o código completo literalmente DENTRO do prompt usando um bloco de código com cercas.
+- O prompt é o ÚNICO texto de pergunta que o estudante vê. Eles não veem expected_answer.
+- Para cartas "exp", o prompt NÃO deve conter código. Coloque o código em "initial_code".
+- Para outros tipos que referenciam código, inclua o código completo literalmente DENTRO do prompt usando um bloco de código com cercas.
 - Quebras de linha dentro de strings devem ser \n.
 - O texto do prompt deve estar em português do Brasil; o código permanece na linguagem original.
 

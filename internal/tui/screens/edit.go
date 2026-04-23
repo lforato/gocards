@@ -380,6 +380,9 @@ func (e *Edit) addTypeSpecificSections(v *editView) {
 			e.previewBox(e.card.ExpectedAnswer, "(empty — press enter to edit)"))
 		v.blank()
 	case models.CardExp:
+		v.field(fInitialCode, e.fieldLabel(i18n.T(i18n.KeyEditFieldInitCode), fInitialCode),
+			e.previewBox(e.card.InitialCode, "(empty — press enter to open vim)"))
+		v.blank()
 		v.field(fExpected, e.fieldLabel(i18n.T(i18n.KeyEditFieldExpected), fExpected),
 			e.previewBox(e.card.ExpectedAnswer, "(empty — press enter to open vim)"))
 		v.blank()

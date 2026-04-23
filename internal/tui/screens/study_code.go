@@ -24,7 +24,7 @@ type codeSubmitMsg struct{ content string }
 
 func (s *Study) initCodeEditor(card *models.Card) tea.Cmd {
 	initial := card.InitialCode
-	if card.Type == models.CardExp {
+	if card.Type == models.CardExp && s.explanationAnswer != "" {
 		initial = s.explanationAnswer
 	}
 	ed := vimtea.NewEditor(
